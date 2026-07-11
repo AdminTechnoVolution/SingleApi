@@ -41,6 +41,7 @@ const DislikeRepository = require('../repository/dislikes.repository');
 const FCMTokenRepository = require('../repository/fcmToken.repository');
 const ReportRepository = require('../repository/report.repository');
 const SubscriptionRepository = require('../repository/subscription.repository');
+const UserProfileSyncService = require('./userProfileSync.service');
 const azureUploader = new AzureUploader(process.env.S3_CONNECTION_STRING, process.env.S3_CONTAINER);
 
 const getUserById = async (req) => {
@@ -82,6 +83,14 @@ const getUserMe = async (req) => {
             subscription = { ...subscriptionDB };
         }
     }
+
+    const syncResult = await UserProfileSyncService.syncUserPassportAndEffectiveLocationByUserId(userId, !!subscription);
+    if (syncResult?.user) {
+        user[0].effectiveLocation = syncResult.user.effectiveLocation;
+        user[0].profileConfig = user[0].profileConfig || {};
+        user[0].profileConfig.passportModeEnabled = syncResult.user.profileConfig?.passportModeEnabled;
+    }
+
     const config = await configService.getConfigs();
     const configs = await fillConfigs(config.data, userId);
 
