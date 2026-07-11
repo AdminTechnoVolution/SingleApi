@@ -8,6 +8,7 @@ const util = require('../../shared/util/util');
 const googlePayClient = require('../client/googlePay.client');
 const EnumSubscriptionNotification = require('../enums/EnumSubscriptionNotification');
 const SubscriptionRepository = require('../repository/subscription.repository');
+const UserProfileSyncService = require('./userProfileSync.service');
 const BusinessException = require('../../shared/exceptionHandler/BusinessException');
 const DataLayerException = require('../../shared/exceptionHandler/DataLayerException');
 
@@ -69,6 +70,9 @@ const updateSubscription = async (req, subscriptionId, purchaseToken, packageNam
         existingSubscription.orderId = responseSubscription.orderId;
 
         await existingSubscription.save();
+
+        const hasActiveSubscription = googlePayClient.isActiveSubscriptionV2(existingSubscription.toObject());
+        await UserProfileSyncService.syncUserPassportAndEffectiveLocationByUserId(existingSubscription.userId, hasActiveSubscription);
     } catch (error) {
         throw new DataLayerException(c.CODE_INTERNAL_SERVER_ERROR);
     }
