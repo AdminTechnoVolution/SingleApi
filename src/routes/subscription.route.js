@@ -56,5 +56,8 @@ const SubscriptionController = require('../controllers/subscription.controller')
  *               $ref: '#/components/schemas/BaseResponse'
  */
 router.post('/create-subscription', validateToken, validateBody(subscriptionSchema), SubscriptionController.createSubscription);
+router.get('/entitlement', validateToken, SubscriptionController.getEntitlement);
+router.post('/stripe/checkout', validateToken, SubscriptionController.createCheckoutSession);
+router.post('/stripe/portal', validateToken, SubscriptionController.createPortalSession);
 
 module.exports = router;

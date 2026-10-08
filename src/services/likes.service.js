@@ -207,6 +207,9 @@ const validateLikesPerDay = async (userId) => {
 
     let subscriptionDB = await SubscriptionRepository.findByFilter(filter);
     if (!subscriptionDB) {
+        subscriptionDB = await SubscriptionRepository.findActiveStripeForUser(new ObjectId(userId));
+    }
+    if (!subscriptionDB) {
         const configResponse = await ConfigService.getConfigs();
         const configs = configResponse.data;
         const likesPerDayConfig = configs.find(c => c.key === constants.BASIC_PLAN_LIKES_PER_DAY);
