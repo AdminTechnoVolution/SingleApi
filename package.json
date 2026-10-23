@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "migrate:user-platform": "node scripts/backfill-user-platform.js",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },

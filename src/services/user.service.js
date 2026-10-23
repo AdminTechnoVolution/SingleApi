@@ -669,7 +669,8 @@ const createPipeline = async (id) => {
             'password': 0,
             'email': 0,
             'created_at': 0,
-            'status': 0
+            'status': 0,
+            'platform': 0
         }
     });
 
