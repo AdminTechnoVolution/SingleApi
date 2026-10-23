@@ -8,7 +8,7 @@ const lastMessageSchema = new Schema({
 }, { _id: false });
 
 const chatSchema = new Schema({
-    _id: { type: Schema.Types.ObjectId, ref: "Match", unique: true },
+    _id: { type: Schema.Types.ObjectId, ref: "Match" },
     users: [{ type: Schema.Types.ObjectId, ref: "User" }],
     lastMessage: { type: lastMessageSchema },
     unreadCounts: {
