@@ -11,10 +11,39 @@ const Subscription = require('../models/subscription.model');
 const UserRepository = require('../repository/user.repository');
 let stripe;
 
+const STRIPE_PLAN_VARIABLES = Object.freeze({
+    weekly: 'STRIPE_PREMIUM_WEEKLY_PRICE_ID',
+    monthly: 'STRIPE_PREMIUM_MONTHLY_PRICE_ID',
+    quarterly: 'STRIPE_PREMIUM_QUARTERLY_PRICE_ID'
+});
+
 const getStripe = () => {
     if (!process.env.STRIPE_SECRET_KEY) throw new BusinessException('STRIPE_NOT_CONFIGURED', 503);
     stripe ||= require('stripe')(process.env.STRIPE_SECRET_KEY);
     return stripe;
+};
+
+const getStripePriceId = (plan) => {
+    const variable = STRIPE_PLAN_VARIABLES[plan];
+    const priceId = variable && process.env[variable];
+    if (!priceId || !priceId.startsWith('price_')) throw new BusinessException('STRIPE_NOT_CONFIGURED', 503);
+    return priceId;
+};
+
+const getStripePlans = async () => {
+    const stripeClient = getStripe();
+    const plans = await Promise.all(Object.keys(STRIPE_PLAN_VARIABLES).map(async plan => {
+        const price = await stripeClient.prices.retrieve(getStripePriceId(plan));
+        if (!price.active || !price.recurring || price.unit_amount == null) throw new BusinessException('STRIPE_NOT_CONFIGURED', 503);
+        return {
+            plan,
+            unitAmount: price.unit_amount,
+            currency: price.currency,
+            interval: price.recurring.interval,
+            intervalCount: price.recurring.interval_count
+        };
+    }));
+    return new BaseResponse(true, [], plans);
 };
 
 const createSubscription = async (req) => {
@@ -87,7 +116,7 @@ const createCheckoutSession = async (req) => {
         mode: 'subscription',
         customer_email: user.email,
         client_reference_id: userId,
-        line_items: [{ price: process.env.STRIPE_PREMIUM_PRICE_ID, quantity: 1 }],
+        line_items: [{ price: getStripePriceId(req.body.plan), quantity: 1 }],
         success_url: process.env.STRIPE_SUCCESS_URL,
         cancel_url: process.env.STRIPE_CANCEL_URL,
         metadata: { userId },
@@ -146,4 +175,4 @@ const validateUniquePurchaseToken = async (purchaseToken) => {
     }
 };
 
-module.exports = { createSubscription, getEntitlement, createCheckoutSession, createPortalSession, processStripeWebhook };
+module.exports = { createSubscription, getEntitlement, getStripePlans, createCheckoutSession, createPortalSession, processStripeWebhook, getStripePriceId };
