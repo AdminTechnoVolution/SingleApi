@@ -28,10 +28,12 @@ const logoutUser = async (req) => {
     try {
         let { accessToken, refreshToken, fcmToken } = req.body;
 
-        FCMTokenRepository.findOneByFilterAndPullToken(
-            { fcmTokens: fcmToken },
-            { fcmTokens: fcmToken }
-        );
+        if (fcmToken) {
+            FCMTokenRepository.findOneByFilterAndPullToken(
+                { fcmTokens: fcmToken },
+                { fcmTokens: fcmToken }
+            );
+        }
 
         redisClient.del(`${consCache.REDIS_KEY_REFRESH_TOKEN}${refreshToken}`);
         redisClient.del(`${consCache.REDIS_KEY_ACCESS_TOKEN}${accessToken}`);
@@ -114,20 +116,22 @@ const loginUser = async (req) => {
         hash: util.generateRandomHash(),
     };
 
-    const result = await FCMTokenRepository.findOneByFilter({ userId: user._id });
-    if (result) {
-        const existsFcmToken = result.fcmTokens.some(i => i === fcmToken);
+    if (fcmToken) {
+        const result = await FCMTokenRepository.findOneByFilter({ userId: user._id });
+        if (result) {
+            const existsFcmToken = result.fcmTokens.some(i => i === fcmToken);
 
-        if (!existsFcmToken) {
-            result.fcmTokens.push(fcmToken);
-            await FCMTokenRepository.save(result);
+            if (!existsFcmToken) {
+                result.fcmTokens.push(fcmToken);
+                await FCMTokenRepository.save(result);
+            }
+        } else {
+            const fcmTokenDoc = new FCMToken({
+                userId: user._id,
+                fcmTokens: [fcmToken],
+            });
+            await FCMTokenRepository.save(fcmTokenDoc);
         }
-    } else {
-        const fcmTokenDoc = new FCMToken({
-            userId: user._id,
-            fcmTokens: [fcmToken],
-        });
-        await FCMTokenRepository.save(fcmTokenDoc);
     }
 
 

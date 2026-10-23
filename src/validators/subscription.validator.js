@@ -53,6 +53,11 @@ const subscriptionSchema = Joi.object({
         }),
 });
 
+const stripeCheckoutSchema = Joi.object({
+    plan: Joi.string().valid('weekly', 'monthly', 'quarterly').required()
+});
+
 module.exports = {
-    subscriptionSchema
+    subscriptionSchema,
+    stripeCheckoutSchema
 };

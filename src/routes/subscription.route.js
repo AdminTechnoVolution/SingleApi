@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { subscriptionSchema } = require('../validators/subscription.validator');
+const { subscriptionSchema, stripeCheckoutSchema } = require('../validators/subscription.validator');
 const validateBody = require('../../shared/middlewares/validateBody');
 const validateToken = require('../../shared/middlewares/validateToken');
 const SubscriptionController = require('../controllers/subscription.controller');
@@ -56,5 +56,9 @@ const SubscriptionController = require('../controllers/subscription.controller')
  *               $ref: '#/components/schemas/BaseResponse'
  */
 router.post('/create-subscription', validateToken, validateBody(subscriptionSchema), SubscriptionController.createSubscription);
+router.get('/entitlement', validateToken, SubscriptionController.getEntitlement);
+router.get('/stripe/plans', validateToken, SubscriptionController.getStripePlans);
+router.post('/stripe/checkout', validateToken, validateBody(stripeCheckoutSchema), SubscriptionController.createCheckoutSession);
+router.post('/stripe/portal', validateToken, SubscriptionController.createPortalSession);
 
 module.exports = router;

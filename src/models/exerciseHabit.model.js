@@ -7,7 +7,7 @@ const languageSchema = new mongoose.Schema({
 }, { _id: false });
 
 const exerciseHabitSchema = new mongoose.Schema({
-  _id: { type: String, required: true, unique: true },
+  _id: { type: String, required: true },
   language: { type: [languageSchema], required: true },
   status: { type: String, enum: ['A', 'I'], default: 'A' }
 }, {
