@@ -142,6 +142,8 @@ const processStripeWebhook = async (req) => {
     const item = event.data.object;
     const userId = item.metadata?.userId;
     if (!userId) return;
+    const currentPeriodStart = stripePeriodDate(item, 'current_period_start');
+    const currentPeriodEnd = stripePeriodDate(item, 'current_period_end');
     await SubscriptionRepository.findOneAndUpdate(
         { externalSubscriptionId: item.id },
         {
@@ -156,13 +158,26 @@ const processStripeWebhook = async (req) => {
                 externalSubscriptionId: item.id,
                 externalCustomerId: String(item.customer),
                 status: item.status,
-                currentPeriodStart: new Date(item.current_period_start * 1000),
-                currentPeriodEnd: new Date(item.current_period_end * 1000),
                 cancelAtPeriodEnd: Boolean(item.cancel_at_period_end),
-                updated_at: new Date()
+                updated_at: new Date(),
+                ...(currentPeriodStart && { currentPeriodStart }),
+                ...(currentPeriodEnd && { currentPeriodEnd })
             }
         }
     );
+};
+
+const stripePeriodDate = (subscription, period) => {
+    const timestamps = [
+        subscription[period],
+        ...(subscription.items?.data || []).map(item => item[period])
+    ];
+    for (const timestamp of timestamps) {
+        if (typeof timestamp !== 'number' || !Number.isFinite(timestamp) || timestamp < 0) continue;
+        const date = new Date(timestamp * 1000);
+        if (Number.isFinite(date.getTime())) return date;
+    }
+    return undefined;
 };
 
 const validateUniquePurchaseToken = async (purchaseToken) => {
@@ -175,4 +190,4 @@ const validateUniquePurchaseToken = async (purchaseToken) => {
     }
 };
 
-module.exports = { createSubscription, getEntitlement, getStripePlans, createCheckoutSession, createPortalSession, processStripeWebhook, getStripePriceId };
+module.exports = { createSubscription, getEntitlement, getStripePlans, createCheckoutSession, createPortalSession, processStripeWebhook, getStripePriceId, stripePeriodDate };
