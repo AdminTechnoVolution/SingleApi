@@ -31,7 +31,6 @@ const refreshTokenSchema = Joi.object({
  *       required:
  *         - accessToken
  *         - refreshToken
- *         - fcmToken
  *       properties:
  *         accessToken:
  *           type: string
@@ -54,7 +53,7 @@ const logoutSchema = Joi.object({
             'any.required': c.CODE_REFRESH_TOKEN_REQUIRED,
             'string.empty': c.CODE_REFRESH_TOKEN_REQUIRED
         }),
-    fcmToken: Joi.string().required()
+    fcmToken: Joi.string().allow('').optional()
         .messages({
             'any.required': c.CODE_FCM_TOKEN_REQUIRED,
             'string.empty': c.CODE_FCM_TOKEN_REQUIRED
@@ -69,7 +68,6 @@ const logoutSchema = Joi.object({
  *       type: object
  *       required:
  *         - email
- *         - fcmToken
  *       properties:
  *         email:
  *           type: string
@@ -108,7 +106,7 @@ const loginSchema = Joi.object({
         .messages({
             'string.max': c.CODE_SOCIAL_TOKEN_MAX
         }),
-    fcmToken: Joi.string().required()
+    fcmToken: Joi.string().allow('').optional()
         .messages({
             'any.required': c.CODE_FCM_TOKEN_REQUIRED,
             'string.empty': c.CODE_FCM_TOKEN_REQUIRED

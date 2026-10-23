@@ -84,6 +84,17 @@ const getUserMe = async (req) => {
         }
     }
 
+    if (!subscription) {
+        const stripeSubscription = await SubscriptionRepository.findActiveStripeForUser(userId);
+        if (stripeSubscription) {
+            const stripeData = stripeSubscription.toObject();
+            stripeData._id = undefined;
+            stripeData.userId = undefined;
+            stripeData.purchaseToken = undefined;
+            subscription = stripeData;
+        }
+    }
+
     const syncResult = await UserProfileSyncService.syncUserPassportAndEffectiveLocationByUserId(userId, !!subscription);
     if (syncResult?.user) {
         user[0].effectiveLocation = syncResult.user.effectiveLocation;

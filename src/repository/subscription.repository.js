@@ -23,4 +23,23 @@ async function save(subscription) {
     }
 }
 
-module.exports = { findByFilter, save };
+const findOneAndUpdate = async (filter, update) => {
+    try {
+        return await Subscription.findOneAndUpdate(filter, update, { new: true, upsert: true, setDefaultsOnInsert: true });
+    } catch (err) {
+        logger.error(`Error in findOneAndUpdate. Error: ${err}`, { className: filename });
+        throw new DataLayerException(c.CODE_INTERNAL_SERVER_ERROR);
+    }
+};
+
+const findActiveStripeForUser = async (userId) => {
+    const now = new Date();
+    return Subscription.findOne({
+        userId,
+        provider: 'stripe',
+        status: { $in: ['active', 'trialing'] },
+        currentPeriodEnd: { $gt: now }
+    }).sort({ currentPeriodEnd: -1 });
+};
+
+module.exports = { findByFilter, save, findOneAndUpdate, findActiveStripeForUser };
