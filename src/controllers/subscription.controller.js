@@ -18,6 +18,11 @@ const getEntitlement = async (req, res, next) => {
   catch (err) { next(err); }
 };
 
+const getStripePlans = async (req, res, next) => {
+  try { res.status(200).json(await SubscriptionService.getStripePlans()); }
+  catch (err) { next(err); }
+};
+
 const createCheckoutSession = async (req, res, next) => {
   try { res.status(200).json(await SubscriptionService.createCheckoutSession(req)); }
   catch (err) { next(err); }
@@ -35,4 +40,4 @@ const stripeWebhook = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createSubscription, getEntitlement, createCheckoutSession, createPortalSession, stripeWebhook };
+module.exports = { createSubscription, getEntitlement, getStripePlans, createCheckoutSession, createPortalSession, stripeWebhook };
