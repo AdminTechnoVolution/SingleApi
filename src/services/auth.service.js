@@ -23,6 +23,7 @@ const googleClient = require('../client/googlePay.client');
 const FCMToken = require('../models/fcmToken.model');
 const FCMTokenRepository = require('../repository/fcmToken.repository');
 const UserRepository = require('../repository/user.repository');
+const Platform = require('../enums/EnumPlatform');
 
 const logoutUser = async (req) => {
     try {
@@ -58,6 +59,12 @@ const refreshTokenUser = async (req) => {
             _id: jwt.getValueFromJwtToken(refreshToken, 'id', false),
             email: jwt.getValueFromJwtToken(refreshToken, 'email', false)
         };
+        const platform = req.body.platform || Platform.ANDROID;
+        const userRecord = await UserRepository.findOneByFilter({ _id: user._id });
+        if (userRecord && userRecord.platform !== platform) {
+            userRecord.platform = platform;
+            await UserRepository.save(userRecord);
+        }
 
         const payload = {
             id: user._id,
@@ -83,6 +90,7 @@ const refreshTokenUser = async (req) => {
 
 const loginUser = async (req) => {
     let { email, password, socialToken, authMethod, fcmToken } = req.body;
+    const platform = req.body.platform || Platform.ANDROID;
     const user = await UserRepository.findOneByFilter({ email: email });
 
     if (!user || user.status !== constants.STATUS_DESC_ACTIVE) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
@@ -103,6 +111,11 @@ const loginUser = async (req) => {
             user.auth = auth;
             await UserRepository.save(user);
         }
+    }
+
+    if (user.platform !== platform) {
+        user.platform = platform;
+        await UserRepository.save(user);
     }
 
     const payload = {

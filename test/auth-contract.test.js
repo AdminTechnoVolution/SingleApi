@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loginSchema, logoutSchema } = require('../src/validators/auth.validator');
+const { loginSchema, logoutSchema, refreshTokenSchema } = require('../src/validators/auth.validator');
 const { pushTokenSchema } = require('../src/validators/device.validator');
+const User = require('../src/models/user.model');
 
 const googleLogin = {
   email: 'person@example.com',
@@ -12,6 +13,19 @@ const googleLogin = {
 test('keeps the existing Android Google login contract', () => {
   const result = loginSchema.validate({ ...googleLogin, fcmToken: 'android-fcm-token' });
   assert.equal(result.error, undefined);
+  assert.equal(result.value.platform, undefined);
+});
+
+test('accepts only supported platform values on login', () => {
+  assert.equal(loginSchema.validate({ ...googleLogin, platform: 'iOS' }).error, undefined);
+  assert.equal(loginSchema.validate({ ...googleLogin, platform: 'Android' }).error, undefined);
+  assert.ok(loginSchema.validate({ ...googleLogin, platform: 'Windows' }).error);
+  assert.equal(refreshTokenSchema.validate({ refreshToken: 'refresh', platform: 'iOS' }).error, undefined);
+  assert.equal(refreshTokenSchema.validate({ refreshToken: 'refresh' }).error, undefined);
+});
+
+test('defaults new user documents to Android', () => {
+  assert.equal(new User({}).platform, 'Android');
 });
 
 test('allows the PWA to login before requesting notification permission', () => {

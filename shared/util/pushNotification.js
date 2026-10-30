@@ -56,6 +56,20 @@ async function sendPush(token, eventType, payload = {}, title = '', body = '', i
     try {
         const message = {
             token,
+            // Keep the visible notification payload web-specific so Android
+            // continues receiving data-only messages for its native handler.
+            webpush: {
+                headers: {
+                    Urgency: "high"
+                },
+                notification: {
+                    title,
+                    body,
+                    icon: "/icon-192.png",
+                    badge: "/icon-192.png",
+                    tag: payload?.data?.chatId || payload?.data?.matchId || eventType || "single"
+                }
+            },
             android: {
                 priority: "high"
             },

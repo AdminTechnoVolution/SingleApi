@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const AuthType = require('../enums/EnumAuthType');
+const Platform = require('../enums/EnumPlatform');
 
 const locationSchema = new mongoose.Schema({
   coordinates: { type: [Number], required: true },
@@ -81,6 +82,7 @@ const userSchema = new mongoose.Schema({
   lifestyle: { type: lifestyleSchema },
   musicPreferences: { type: musicPreferencesSchema },
   profileConfig: { type: profileConfigSchema },
+  platform: { type: String, enum: Object.values(Platform), default: Platform.ANDROID },
   status: { type: String, enum: ['active', 'inactive', 'deleting'], default: 'active', lowercase: true },
   created_at: { type: Date, default: Date.now }
 }, {
@@ -88,6 +90,7 @@ const userSchema = new mongoose.Schema({
 });
 
 userSchema.index({ "email": 1 }, { unique: true });
+userSchema.index({ "platform": 1 });
 userSchema.index({ "userInfo.gender": 1 });
 userSchema.index({ "userInfo.birthdate": 1 });
 userSchema.index({ "userInfo.sexualOrientation": 1 });

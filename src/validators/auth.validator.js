@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const c = require('../../shared/util/constants.frontcodes');
+const Platform = require('../enums/EnumPlatform');
 
 /**
  * @swagger
@@ -13,13 +14,18 @@ const c = require('../../shared/util/constants.frontcodes');
  *         refreshToken:
  *           type: string
  *           example: eyJhbGciOi
+ *         platform:
+ *           type: string
+ *           enum: [Android, iOS]
+ *           default: Android
 */
 const refreshTokenSchema = Joi.object({
     refreshToken: Joi.string().trim().required()
         .messages({
             'any.required': c.CODE_REFRESH_TOKEN_REQUIRED,
             'string.empty': c.CODE_REFRESH_TOKEN_REQUIRED
-        })
+        }),
+    platform: Joi.string().valid(...Object.values(Platform))
 });
 
 /**
@@ -110,7 +116,8 @@ const loginSchema = Joi.object({
         .messages({
             'any.required': c.CODE_FCM_TOKEN_REQUIRED,
             'string.empty': c.CODE_FCM_TOKEN_REQUIRED
-        })
+        }),
+    platform: Joi.string().valid(...Object.values(Platform))
 }).xor('password', 'socialToken').messages({
     'object.missing': c.CODE_ONLY_PASSWORD_OR_SOCIAL_TOKEN,
     'object.xor': c.CODE_ONLY_PASSWORD_OR_SOCIAL_TOKEN
