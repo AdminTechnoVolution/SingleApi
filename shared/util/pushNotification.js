@@ -48,6 +48,10 @@ async function getDataForNotification(event, data) {
             title = 'New quick message';
             body = "Someone sent you a quick message!";
             break;
+        case constants.WS_EVENT_NEW_BLIND_DATE_GUEST:
+            title = 'Blind date';
+            body = 'Someone joined your blind date. Tap to start the call!';
+            break;
         case constants.WS_EVENT_NEW_MATCH:
             title = 'New Match';
             body = 'Open Chat';

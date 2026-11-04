@@ -9,7 +9,8 @@ const {
     supportsQuickMessages,
     buildVersionPolicy,
     configNumber,
-    DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE
+    DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE,
+    DEFAULT_WEB_QUICK_MESSAGES_MIN_VERSION_CODE
 } = require('../../shared/util/appVersion');
 const ConfigService = require('./config.service');
 const UserRepository = require('../repository/user.repository');
@@ -52,8 +53,10 @@ const getVersionPolicy = async (req) => {
 const userSupportsQuickMessages = async (userId) => {
     const user = await UserRepository.findById(userId, 'clientInfo');
     const configs = (await ConfigService.getConfigs()).data;
-    const minVersion = configNumber(configs, constants.ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE, DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE);
-    return supportsQuickMessages(user?.clientInfo, minVersion);
+    return supportsQuickMessages(user?.clientInfo, {
+        android: configNumber(configs, constants.ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE, DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE),
+        web: configNumber(configs, constants.WEB_QUICK_MESSAGES_MIN_VERSION_CODE, DEFAULT_WEB_QUICK_MESSAGES_MIN_VERSION_CODE)
+    });
 };
 
 module.exports = { recordClientVersion, getVersionPolicy, userSupportsQuickMessages };

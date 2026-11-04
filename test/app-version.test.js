@@ -49,3 +49,13 @@ test('only the new Android app sends explicit dislikes (legacy swiped = dislike)
     assert.strictEqual(sendsExplicitDislikes(parseClientVersion({ 'x-app-version': '106', 'x-app-platform': 'android' })), false);
     assert.strictEqual(sendsExplicitDislikes(parseClientVersion({})), false); // old app / PWA: no headers
 });
+
+test('the new PWA (web ≥ 200) gets explicit dislikes and quick messages; old PWA does not', () => {
+    const { sendsExplicitDislikes, supportsQuickMessages, parseClientVersion } = require('../shared/util/appVersion');
+    const pwaNew = parseClientVersion({ 'x-app-version': '200', 'x-app-platform': 'web' });
+    assert.strictEqual(sendsExplicitDislikes(pwaNew), true);
+    assert.strictEqual(sendsExplicitDislikes(parseClientVersion({ 'x-app-version': '199', 'x-app-platform': 'web' })), false);
+    assert.strictEqual(supportsQuickMessages({ platform: 'web', appVersionCode: 200 }, { android: 107, web: 200 }), true);
+    assert.strictEqual(supportsQuickMessages({ platform: 'web', appVersionCode: 200 }, 107), false); // number = Android only
+    assert.strictEqual(supportsQuickMessages(null, { android: 107, web: 200 }), false);
+});

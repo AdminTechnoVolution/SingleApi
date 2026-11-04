@@ -13,7 +13,11 @@ const Config = require('../src/models/config.model');
 const entries = [
     { key: 'ANDROID_MIN_VERSION_CODE', value: 0, description: 'Android builds below this versionCode must update (0 = disabled).' },
     { key: 'ANDROID_LATEST_VERSION_CODE', value: 107, description: 'Latest Android versionCode on Play; older builds get a soft update prompt (0 = disabled).' },
-    { key: 'ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE', value: 107, description: 'First Android versionCode that displays quick messages; older apps get a like push instead.' }
+    { key: 'ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE', value: 107, description: 'First Android versionCode that displays quick messages; older apps get a like push instead.' },
+    { key: 'WEB_MIN_VERSION_CODE', value: 0, description: 'PWA builds below this must reload/update (0 = disabled).' },
+    { key: 'WEB_LATEST_VERSION_CODE', value: 200, description: 'Latest PWA build number.' },
+    { key: 'WEB_QUICK_MESSAGES_MIN_VERSION_CODE', value: 200, description: 'First PWA build that displays quick messages; older builds get a like push instead.' },
+    { key: 'BLIND_DATE_ROOMS_PER_DAY', value: 10, description: 'Blind-date rooms a Premium user can create per day.' }
 ];
 
 (async () => {

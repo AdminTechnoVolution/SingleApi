@@ -5,7 +5,8 @@ const { validateJwtSocketConnection } = require('../middlewares/validateToken');
 const { Server } = require('socket.io');
 
 const namespaces = [
-    { path: '/ws/chats', handler: require('../../src/websockets/chats') }
+    { path: '/ws/chats', handler: require('../../src/websockets/chats') },
+    { path: '/ws/blind-dates', handler: require('../../src/websockets/blindDates') }
 ];
 
 const allowedNamespaces = namespaces.map(ns => ns.path);

@@ -13,9 +13,11 @@ const PLATFORMS = ['android', 'ios', 'web'];
 
 /** Fallback when the ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE config is missing. */
 const DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE = 107;
-// From this Android build on, scrolling past a profile sends nothing: a dislike
-// can only come from an explicit tap (✕, 😞, report).
-const EXPLICIT_DISLIKE_MIN_VERSION_CODE = 107;
+/** PWA build number (SinglePwa lib/config.ts APP_VERSION_CODE) with reels + quick messages. */
+const DEFAULT_WEB_QUICK_MESSAGES_MIN_VERSION_CODE = 200;
+// From these builds on, scrolling past a profile sends nothing: a dislike can
+// only come from an explicit tap (✕, 😞, report).
+const EXPLICIT_DISLIKE_MIN_VERSION_CODE = { android: 107, web: 200 };
 
 const parseClientVersion = (headers = {}) => {
     const rawVersion = headers[HEADER_VERSION];
@@ -35,10 +37,14 @@ const configNumber = (configs, key, fallback) => {
  * Can this user's last-seen client display quick messages?
  * Unknown/legacy clients (no clientInfo) → false.
  */
-const supportsQuickMessages = (clientInfo, minVersionCode) =>
-    clientInfo?.platform === 'android' &&
-    Number.isInteger(clientInfo?.appVersionCode) &&
-    clientInfo.appVersionCode >= minVersionCode;
+const supportsQuickMessages = (clientInfo, minVersionCode) => {
+    // A number is the Android minimum (original signature); an object maps platform → minimum.
+    const minimums = typeof minVersionCode === 'number' ? { android: minVersionCode } : (minVersionCode || {});
+    const min = minimums[clientInfo?.platform];
+    return Number.isInteger(min) &&
+        Number.isInteger(clientInfo?.appVersionCode) &&
+        clientInfo.appVersionCode >= min;
+};
 
 /**
  * Update policy for a client. Both thresholds come from the `configs`
@@ -69,5 +75,6 @@ module.exports = {
     supportsQuickMessages,
     buildVersionPolicy,
     configNumber,
-    DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE
+    DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE,
+    DEFAULT_WEB_QUICK_MESSAGES_MIN_VERSION_CODE
 };
