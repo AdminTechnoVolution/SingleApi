@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Rules = require('../src/services/blindDate.rules');
-const { hmacIceServers, cloudflareIceServers } = require('../shared/util/turnCredentials');
+const { hmacIceServers, cloudflareIceServers, getIceServers, DEFAULT_STUN } = require('../shared/util/turnCredentials');
 
 const NOW = new Date('2026-11-03T12:00:00Z');
 const birthdateForAge = (age) => new Date(Date.UTC(NOW.getUTCFullYear() - age, 0, 1));
@@ -94,6 +94,23 @@ test('managed TURN (Cloudflare) credentials are requested with a TTL', async () 
     assert.match(request.url, /turn\/keys\/k1\/credentials\/generate-ice-servers$/);
     assert.equal(JSON.parse(request.init.body).ttl, 120);
     assert.equal(servers[0].username, 'u');
+});
+
+test('Cloudflare TURN failing (error, outage, empty answer) falls back to STUN so the call still starts', async () => {
+    const env = { TURN_PROVIDER_KEY_ID: 'k1', TURN_PROVIDER_API_TOKEN: 't' };
+    const failures = [
+        async () => ({ ok: false, status: 401, json: async () => ({}) }),
+        async () => { throw new Error('network down'); },
+        async () => ({ ok: true, json: async () => ({}) })
+    ];
+    for (const fetchImpl of failures) {
+        const result = await getIceServers('u1', env, { fetchImpl });
+        assert.equal(result.provider, 'stun-fallback');
+        assert.deepEqual(result.iceServers, DEFAULT_STUN);
+    }
+    const ok = await getIceServers('u1', env, { fetchImpl: async () => ({ ok: true, json: async () => ({ iceServers: [{ urls: ['turn:x'], username: 'u', credential: 'p' }] }) }) });
+    assert.equal(ok.provider, 'cloudflare');
+    assert.equal(ok.iceServers[0].username, 'u');
 });
 
 test('match flags: one "yes" is only a hint; the peer is revealed after the match is created', () => {
