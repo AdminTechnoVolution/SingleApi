@@ -1,0 +1,65 @@
+/**
+ * Client version helpers (pure, unit-tested).
+ *
+ * Clients from v2 on send:
+ *   X-App-Version:  integer versionCode (Android) / build number
+ *   X-App-Platform: "android" | "ios" | "web"
+ * Legacy clients send neither, which is how we recognise them.
+ */
+
+const HEADER_VERSION = 'x-app-version';
+const HEADER_PLATFORM = 'x-app-platform';
+const PLATFORMS = ['android', 'ios', 'web'];
+
+/** Fallback when the ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE config is missing. */
+const DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE = 107;
+
+const parseClientVersion = (headers = {}) => {
+    const rawVersion = headers[HEADER_VERSION];
+    const versionCode = /^\d{1,9}$/.test(String(rawVersion ?? '').trim()) ? parseInt(rawVersion, 10) : null;
+    const rawPlatform = String(headers[HEADER_PLATFORM] ?? '').trim().toLowerCase();
+    const platform = PLATFORMS.includes(rawPlatform) ? rawPlatform : null;
+    return { versionCode, platform };
+};
+
+const configNumber = (configs, key, fallback) => {
+    const entry = (configs || []).find((c) => c.key === key);
+    const value = parseInt(entry?.value, 10);
+    return Number.isFinite(value) ? value : fallback;
+};
+
+/**
+ * Can this user's last-seen client display quick messages?
+ * Unknown/legacy clients (no clientInfo) → false.
+ */
+const supportsQuickMessages = (clientInfo, minVersionCode) =>
+    clientInfo?.platform === 'android' &&
+    Number.isInteger(clientInfo?.appVersionCode) &&
+    clientInfo.appVersionCode >= minVersionCode;
+
+/**
+ * Update policy for a client. Both thresholds come from the `configs`
+ * collection, so forcing/suggesting an update needs no new release.
+ * 0 (or a missing config) disables the corresponding prompt.
+ */
+const buildVersionPolicy = (configs, { versionCode, platform }) => {
+    const prefix = (platform || 'android').toUpperCase();
+    const minVersionCode = configNumber(configs, `${prefix}_MIN_VERSION_CODE`, 0);
+    const latestVersionCode = configNumber(configs, `${prefix}_LATEST_VERSION_CODE`, 0);
+    const known = Number.isInteger(versionCode);
+    return {
+        platform: platform || 'android',
+        minVersionCode,
+        latestVersionCode,
+        updateRequired: known && minVersionCode > 0 && versionCode < minVersionCode,
+        updateAvailable: known && latestVersionCode > 0 && versionCode < latestVersionCode
+    };
+};
+
+module.exports = {
+    parseClientVersion,
+    supportsQuickMessages,
+    buildVersionPolicy,
+    configNumber,
+    DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE
+};

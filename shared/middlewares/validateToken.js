@@ -24,6 +24,9 @@ module.exports = async (req, res, next) => {
         if (!exists)
             throw new BusinessException(c.CODE_ERROR_AUTH, constants.HTTP_UNATHORIZED);
 
+        // Lazy require: avoids a load-order cycle (service → repository → shared).
+        require('../../src/services/clientVersion.service').recordClientVersion(req);
+
         next();
     } catch (err) {
         logger.error(`Error validating token: ${err}`, { className: filename });

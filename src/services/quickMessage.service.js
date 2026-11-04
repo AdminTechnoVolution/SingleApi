@@ -10,6 +10,7 @@ const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
 const PushNotification = require('../../shared/util/pushNotification');
 const PremiumService = require('./premium.service');
+const ClientVersionService = require('./clientVersion.service');
 const { buildReceivedPipeline } = require('./quickMessage.pipeline');
 const LikesService = require('./likes.service');
 const QuickMessageRepository = require('../repository/quickMessage.repository');
@@ -48,14 +49,32 @@ const sendQuickMessage = async (req) => {
         // matchTasks moves this quick message into the new chat.
         data = await LikesService.matchTasks(userId, { toUserId }, data);
     } else {
-        const sender = await UserRepository.findById(userId, 'userInfo.fullName');
-        // No content in the payload: the recipient may not be premium.
-        const notification = new BaseResponse(true, [], { fromUserId: userId, fullName: sender?.userInfo?.fullName });
-        PushNotification.proccessNotificationsByUser(toUserId, constants.WS_EVENT_NEW_QUICK_MESSAGE, notification);
+        await notifyRecipient(userId, toUserId);
     }
 
     logger.info(`Quick message sent: fromUserId: ${userId}, toUserId: ${toUserId}, isMatch: ${isMatch}`, { className: filename, req });
     return new BaseResponse(true, [c.CODE_SUCCESS], data);
+};
+
+/**
+ * Recipients on an app that can show quick messages get `newQuickMessage`.
+ * Legacy apps silently ignore unknown push types, so they get `newLike`
+ * instead — accurate, since a quick message also creates a like, and it shows
+ * up in their "Likes you". Once they update, the quick message is waiting.
+ */
+const notifyRecipient = async (userId, toUserId) => {
+    try {
+        if (await ClientVersionService.userSupportsQuickMessages(toUserId)) {
+            const sender = await UserRepository.findById(userId, 'userInfo.fullName');
+            // No content in the payload: the recipient may not be premium.
+            const notification = new BaseResponse(true, [], { fromUserId: userId, fullName: sender?.userInfo?.fullName });
+            PushNotification.proccessNotificationsByUser(toUserId, constants.WS_EVENT_NEW_QUICK_MESSAGE, notification);
+        } else {
+            PushNotification.proccessNotificationsByUser(toUserId, constants.WS_EVENT_NEW_LIKE, new BaseResponse(true));
+        }
+    } catch (err) {
+        logger.error(`Error notifying quick message recipient ${toUserId}: ${err}`, { className: filename });
+    }
 };
 
 const validateSendQuickMessage = async (userId, toUserId) => {

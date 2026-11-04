@@ -83,6 +83,14 @@ const userSchema = new mongoose.Schema({
   musicPreferences: { type: musicPreferencesSchema },
   profileConfig: { type: profileConfigSchema },
   platform: { type: String, enum: Object.values(Platform), default: Platform.ANDROID },
+  // Last client version seen on an authenticated request (absent = legacy app).
+  clientInfo: {
+    type: new mongoose.Schema({
+      platform: { type: String },
+      appVersionCode: { type: Number },
+      updated_at: { type: Date }
+    }, { _id: false })
+  },
   status: { type: String, enum: ['active', 'inactive', 'deleting'], default: 'active', lowercase: true },
   created_at: { type: Date, default: Date.now }
 }, {
