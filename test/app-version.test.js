@@ -42,3 +42,10 @@ test('missing configs or unknown versions never block anyone', () => {
   assert.equal(policy.updateAvailable, false);
   assert.equal(buildVersionPolicy(configs, { versionCode: null, platform: null }).updateRequired, false);
 });
+
+test('only the new Android app sends explicit dislikes (legacy swiped = dislike)', () => {
+    const { sendsExplicitDislikes, parseClientVersion } = require('../shared/util/appVersion');
+    assert.strictEqual(sendsExplicitDislikes(parseClientVersion({ 'x-app-version': '107', 'x-app-platform': 'android' })), true);
+    assert.strictEqual(sendsExplicitDislikes(parseClientVersion({ 'x-app-version': '106', 'x-app-platform': 'android' })), false);
+    assert.strictEqual(sendsExplicitDislikes(parseClientVersion({})), false); // old app / PWA: no headers
+});

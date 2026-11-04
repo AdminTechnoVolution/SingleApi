@@ -112,6 +112,7 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
     );
 
     // Same for my (non-expired) dislikes: shown again, marked `dislikedByMe`.
+    // Only explicit ones (✕ tapped in the new app): legacy swipe-dislikes don't count.
     pipeline.push(
         {
             $lookup: {
@@ -123,7 +124,8 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
                             $expr: {
                                 $and: [
                                     { $eq: ["$toUserId", "$$targetId"] },
-                                    { $eq: ["$fromUserId", new ObjectId(meUser._id)] }
+                                    { $eq: ["$fromUserId", new ObjectId(meUser._id)] },
+                                    { $eq: ["$explicit", true] }
                                 ]
                             }
                         }

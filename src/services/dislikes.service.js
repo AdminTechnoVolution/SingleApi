@@ -7,6 +7,7 @@ const UserRepository = require('../repository/user.repository');
 const DislikesRepository = require('../repository/dislikes.repository');
 const QuickMessageRepository = require('../repository/quickMessage.repository');
 const Dislikes = require('../models/dislikes.model');
+const AppVersion = require('../../shared/util/appVersion');
 const LikeRepository = require('../repository/likes.repository');
 const ObjectId = require('mongoose').Types.ObjectId;
 const ttlRecordDislikeSecs = process.env.RECORD_DISLIKE_TTL_SECS;
@@ -19,14 +20,23 @@ const sendDislike = async (req) => {
 
     const dislikeFound = await DislikesRepository.findByAnyFilter({ fromUserId: userId, toUserId: body.toUserId });
 
+    const explicit = AppVersion.sendsExplicitDislikes(AppVersion.parseClientVersion(req.headers));
+
     if (!dislikeFound || (Array.isArray(dislikeFound) && dislikeFound.length === 0)) {
         let dislike = new Dislikes({
             fromUserId: userId,
             toUserId: body.toUserId,
-            expires_at: new Date(Date.now() + (ttlRecordDislikeSecs * 1000))
+            expires_at: new Date(Date.now() + (ttlRecordDislikeSecs * 1000)),
+            explicit
         });
 
         await DislikesRepository.save(dislike);
+    } else if (explicit) {
+        // An old swipe-dislike becomes explicit (and gets a fresh TTL) when the user taps ✕.
+        await Dislikes.updateMany(
+            { fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) },
+            { $set: { explicit: true, expires_at: new Date(Date.now() + (ttlRecordDislikeSecs * 1000)) } }
+        );
     }
 
     // Like and dislike are exclusive: disliking withdraws my pending like.

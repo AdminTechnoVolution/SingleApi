@@ -13,6 +13,9 @@ const PLATFORMS = ['android', 'ios', 'web'];
 
 /** Fallback when the ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE config is missing. */
 const DEFAULT_QUICK_MESSAGES_MIN_VERSION_CODE = 107;
+// From this Android build on, scrolling past a profile sends nothing: a dislike
+// can only come from an explicit tap (✕, 😞, report).
+const EXPLICIT_DISLIKE_MIN_VERSION_CODE = 107;
 
 const parseClientVersion = (headers = {}) => {
     const rawVersion = headers[HEADER_VERSION];
@@ -56,8 +59,13 @@ const buildVersionPolicy = (configs, { versionCode, platform }) => {
     };
 };
 
+/** True when this client only sends dislikes on an explicit tap (never on swipe). */
+const sendsExplicitDislikes = ({ platform, versionCode, appVersionCode } = {}) =>
+    supportsQuickMessages({ platform, appVersionCode: appVersionCode ?? versionCode }, EXPLICIT_DISLIKE_MIN_VERSION_CODE);
+
 module.exports = {
     parseClientVersion,
+    sendsExplicitDislikes,
     supportsQuickMessages,
     buildVersionPolicy,
     configNumber,
