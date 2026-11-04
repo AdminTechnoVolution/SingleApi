@@ -35,7 +35,7 @@ const sendDislike = async (req) => {
         // An old swipe-dislike becomes explicit (and gets a fresh TTL) when the user taps ✕.
         await Dislikes.updateMany(
             { fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) },
-            { $set: { explicit: true, expires_at: new Date(Date.now() + (ttlRecordDislikeSecs * 1000)) } }
+            { $set: { explicit: true, created_at: new Date(), expires_at: new Date(Date.now() + (ttlRecordDislikeSecs * 1000)) } }
         );
     }
 

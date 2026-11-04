@@ -139,6 +139,24 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
             $addFields: {
                 dislikedByMe: { $gt: [{ $size: "$dislikesFromMe" }, 0] }
             }
+        },
+        // Like and dislike are exclusive. If an old race left both saved, the most
+        // recent action wins so the app never shows the heart and the ✕ marked together.
+        {
+            $addFields: {
+                likedByMe: {
+                    $and: ["$likedByMe", { $or: [
+                        { $not: ["$dislikedByMe"] },
+                        { $gte: [{ $arrayElemAt: ["$likesFromMe.created_at", 0] }, { $arrayElemAt: ["$dislikesFromMe.created_at", 0] }] }
+                    ] }]
+                },
+                dislikedByMe: {
+                    $and: ["$dislikedByMe", { $or: [
+                        { $not: ["$likedByMe"] },
+                        { $lt: [{ $arrayElemAt: ["$likesFromMe.created_at", 0] }, { $arrayElemAt: ["$dislikesFromMe.created_at", 0] }] }
+                    ] }]
+                }
+            }
         }
     );
 
