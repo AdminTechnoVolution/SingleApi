@@ -93,10 +93,11 @@ const buildClaimFilter = (roomId, guestId, now = new Date()) => ({
     created_at: { $gte: new Date(now.getTime() - OPEN_ROOM_TTL_MS) }
 });
 
-/** Safe public view of a room for guests: host's first name + conditions only. */
+/** Safe public view of a room for guests: host's first name, age + conditions only. */
 const toPublicRoom = (room) => ({
     _id: room._id,
     hostName: String(room.hostName || '').trim().split(/\s+/)[0] || '',
+    hostAge: Number.isInteger(room.hostAge) ? room.hostAge : null,
     conditions: normalizeConditions(room.conditions || {}),
     created_at: room.created_at
 });

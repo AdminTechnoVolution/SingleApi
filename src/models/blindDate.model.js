@@ -21,6 +21,8 @@ const blindDateSchema = new Schema({
   hostId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   hostName: { type: String, required: true },
   hostGender: { type: String, ref: 'Gender' },
+  // Host age when the room was created (rooms live 30 min): shown to guests.
+  hostAge: { type: Number },
   conditions: { type: conditionsSchema, default: () => ({}) },
   status: { type: String, enum: ['open', 'matched', 'in_call', 'ended', 'cancelled', 'expired'], default: 'open' },
   guestId: { type: Schema.Types.ObjectId, ref: 'User', default: null },

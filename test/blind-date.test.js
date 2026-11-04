@@ -36,9 +36,11 @@ test('conditions are normalised: deduped, adult-only and ordered age range', () 
 });
 
 test('guests only ever see the host first name and the conditions', () => {
-    const view = Rules.toPublicRoom({ _id: 'r1', hostId: 'secret', hostName: 'David Córdoba', hostGender: 'man', conditions: { genders: ['woman'] }, guestId: null, created_at: NOW });
-    assert.deepEqual(Object.keys(view).sort(), ['_id', 'conditions', 'created_at', 'hostName']);
+    const view = Rules.toPublicRoom({ _id: 'r1', hostId: 'secret', hostName: 'David Córdoba', hostGender: 'man', hostAge: 31, conditions: { genders: ['woman'] }, guestId: null, created_at: NOW });
+    assert.deepEqual(Object.keys(view).sort(), ['_id', 'conditions', 'created_at', 'hostAge', 'hostName']);
     assert.equal(view.hostName, 'David');
+    assert.equal(view.hostAge, 31);
+    assert.equal(Rules.toPublicRoom({ hostName: 'Ana' }).hostAge, null);
 });
 
 test('claim filter only matches an open, guest-less, fresh room not hosted by the guest', () => {

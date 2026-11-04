@@ -15,6 +15,7 @@ const BlindDatePreference = require('../models/blindDatePreference.model');
 const MatchStatus = require('../enums/EnumMatchStatus');
 const Match = require('../models/match.model');
 const UserRepository = require('../repository/user.repository');
+const User = require('../models/user.model');
 const PremiumService = require('./premium.service');
 const ConfigService = require('./config.service');
 const LikesService = require('./likes.service');
@@ -150,7 +151,7 @@ const createRoom = async (req) => {
     const today = await BlindDate.countDocuments({ hostId: new ObjectId(userId), created_at: { $gte: startOfDay } });
     if (today >= limit) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_DAILY_LIMIT);
 
-    const host = await UserRepository.findById(userId, 'userInfo.fullName userInfo.gender');
+    const host = await UserRepository.findById(userId, 'userInfo.fullName userInfo.gender userInfo.birthdate');
     if (!host) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
     const now = new Date();
     try {
@@ -158,6 +159,7 @@ const createRoom = async (req) => {
             hostId: new ObjectId(userId),
             hostName: host.userInfo.fullName,
             hostGender: host.userInfo.gender,
+            hostAge: Rules.ageFrom(host.userInfo.birthdate, now) ?? undefined,
             conditions: Rules.normalizeConditions(req.body?.conditions),
             expires_at: new Date(now.getTime() + Rules.ROOM_RETENTION_MS)
         });
@@ -172,13 +174,22 @@ const createRoom = async (req) => {
     }
 };
 
+/** Fills `hostAge` from the hosts' birthdates (rooms created before it was stored on the room). */
+const withHostAges = async (rooms, now = new Date()) => {
+    const missing = [...new Set(rooms.filter(room => !Number.isInteger(room.hostAge)).map(room => String(room.hostId)))];
+    if (missing.length === 0) return rooms;
+    const hosts = await User.find({ _id: { $in: missing.map(id => new ObjectId(id)) } }, 'userInfo.birthdate').lean();
+    const ages = new Map(hosts.map(host => [String(host._id), Rules.ageFrom(host.userInfo?.birthdate, now)]));
+    return rooms.map(room => (Number.isInteger(room.hostAge) ? room : { ...room, hostAge: ages.get(String(room.hostId)) ?? null }));
+};
+
 const listRooms = async (req) => {
     const userId = userIdFrom(req);
     await requirePremium(userId);
     const me = await UserRepository.findById(userId, 'userInfo preferences musicPreferences');
     if (!me) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
     const filter = Rules.buildOpenRoomsFilter(me, await excludedPeople(userId));
-    const rooms = await BlindDate.find(filter).sort({ created_at: -1 }).limit(50).lean();
+    const rooms = await withHostAges(await BlindDate.find(filter).sort({ created_at: -1 }).limit(50).lean());
     return new BaseResponse(true, [], { results: rooms.map(Rules.toPublicRoom) });
 };
 
