@@ -276,7 +276,7 @@ async function verifySocialToken(socialToken, authMethod, user, req) {
 
     logger.info({ message: `Social Response: ${JSON.stringify(socialResponse)}`, className: filename, req: req });
 
-    if (socialResponse.email !== user.email) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
+    if (String(socialResponse.email || '').toLowerCase() !== String(user.email || '').toLowerCase()) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
 
     if (!socialResponse.isVerified) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
 

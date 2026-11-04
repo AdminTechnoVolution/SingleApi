@@ -689,7 +689,7 @@ async function verifySocialToken(body, req) {
 
     logger.info({ message: `Social Response: ${JSON.stringify(socialResponse)}`, className: filename, req: req });
 
-    if (socialResponse.email !== req.body.email) throw new BusinessException(c.CODE_EMAIL_INVALID);
+    if (String(socialResponse.email || '').toLowerCase() !== String(req.body.email || '').toLowerCase()) throw new BusinessException(c.CODE_EMAIL_INVALID);
 
     if (!socialResponse.isVerified) throw new BusinessException(c.CODE_ERROR_REGISTER);
 

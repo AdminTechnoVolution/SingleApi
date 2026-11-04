@@ -5,6 +5,7 @@ const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
 const UserRepository = require('../repository/user.repository');
 const DislikesRepository = require('../repository/dislikes.repository');
+const QuickMessageRepository = require('../repository/quickMessage.repository');
 const Dislikes = require('../models/dislikes.model');
 const ttlRecordDislikeSecs = process.env.RECORD_DISLIKE_TTL_SECS;
 
@@ -25,6 +26,9 @@ const sendDislike = async (req) => {
 
         await DislikesRepository.save(dislike);
     }
+
+    // Passing on someone also clears any quick message they sent you.
+    await QuickMessageRepository.deleteManyByFilter({ fromUserId: body.toUserId, toUserId: userId });
 
     message = c.CODE_SUCCESS;
     return new BaseResponse(true, [message]);

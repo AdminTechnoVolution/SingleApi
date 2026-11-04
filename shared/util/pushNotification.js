@@ -43,6 +43,11 @@ async function getDataForNotification(event, data) {
             title = 'New like';
             body = "You've got a new like!";
             break;
+        case constants.WS_EVENT_NEW_QUICK_MESSAGE:
+            // Content stays out of the push: only subscribers may read it in-app.
+            title = 'New quick message';
+            body = "Someone sent you a quick message!";
+            break;
         case constants.WS_EVENT_NEW_MATCH:
             title = 'New Match';
             body = 'Open Chat';

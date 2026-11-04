@@ -36,6 +36,7 @@ module.exports = {
     WS_EVENT_NEW_UPDATE_MESSAGE: "newUpdateMessage",
     WS_EVENT_NEW_LIKE: "newLike",
     WS_EVENT_NEW_MATCH: "newMatch",
+    WS_EVENT_NEW_QUICK_MESSAGE: "newQuickMessage",
     UNKNOWN_NOTIFICATION_TYPE: "Unknown notification type",
     DEFAULT_SORTING_BY_NAME: { "language.0.name": 1 },
 };

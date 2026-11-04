@@ -1,0 +1,101 @@
+const path = require('path');
+const logger = require('../../shared/config/logger');
+const filename = path.basename(__filename);
+const BaseResponse = require('../../shared/util/baseResponse');
+const BasePaginatedResponse = require('../../shared/util/basePaginatedResponse');
+const BusinessException = require('../../shared/exceptionHandler/BusinessException');
+const ObjectId = require("mongoose").Types.ObjectId;
+const c = require('../../shared/util/constants.frontcodes');
+const constants = require('../../shared/util/constants');
+const jwtUtil = require('../../shared/util/jwt');
+const PushNotification = require('../../shared/util/pushNotification');
+const PremiumService = require('./premium.service');
+const { buildReceivedPipeline } = require('./quickMessage.pipeline');
+const LikesService = require('./likes.service');
+const QuickMessageRepository = require('../repository/quickMessage.repository');
+const LikeRepository = require('../repository/likes.repository');
+const MatchRepository = require('../repository/match.repository');
+const UserRepository = require('../repository/user.repository');
+const QuickMessage = require('../models/quickMessage.model');
+const Likes = require('../models/likes.model');
+
+const DEFAULT_PAGE_SIZE = 20;
+const pageSize = () => Number(process.env.LIMIT_GET_QUICK_MESSAGES_RECEIVED) || DEFAULT_PAGE_SIZE;
+
+/**
+ * POST /api/actions/quick-message — premium only.
+ * Sends a short note to someone you have not matched with yet. It also counts
+ * as a like: if they had already liked you, it is an instant match and the
+ * note becomes the first message of the new chat.
+ */
+const sendQuickMessage = async (req) => {
+    const userId = jwtUtil.getValueFromJwtToken(req.headers['authorization'], 'id');
+    const { toUserId, content } = req.body;
+
+    await validateSendQuickMessage(userId, toUserId);
+
+    await QuickMessageRepository.save(new QuickMessage({ fromUserId: userId, toUserId, content }));
+
+    // Quick message implies a like (premium: no daily limit applies).
+    const existingLike = await LikeRepository.findByAnyFilter({ fromUserId: userId, toUserId });
+    if (!existingLike.length) {
+        await LikeRepository.save(new Likes({ fromUserId: userId, toUserId }));
+    }
+
+    const isMatch = await LikesService.validateIsMatch({ toUserId }, userId);
+    let data = { isMatch };
+    if (isMatch) {
+        // matchTasks moves this quick message into the new chat.
+        data = await LikesService.matchTasks(userId, { toUserId }, data);
+    } else {
+        const sender = await UserRepository.findById(userId, 'userInfo.fullName');
+        // No content in the payload: the recipient may not be premium.
+        const notification = new BaseResponse(true, [], { fromUserId: userId, fullName: sender?.userInfo?.fullName });
+        PushNotification.proccessNotificationsByUser(toUserId, constants.WS_EVENT_NEW_QUICK_MESSAGE, notification);
+    }
+
+    logger.info(`Quick message sent: fromUserId: ${userId}, toUserId: ${toUserId}, isMatch: ${isMatch}`, { className: filename, req });
+    return new BaseResponse(true, [c.CODE_SUCCESS], data);
+};
+
+const validateSendQuickMessage = async (userId, toUserId) => {
+    if (toUserId === userId) throw new BusinessException(c.CODE_ERROR_USER_CANNOT_LIKE_SELF);
+    if (!ObjectId.isValid(toUserId)) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
+
+    if (!(await PremiumService.isPremium(userId))) throw new BusinessException(c.CODE_ERROR_PREMIUM_REQUIRED);
+
+    const target = await UserRepository.findOneByFilter({ _id: toUserId, status: constants.STATUS_DESC_ACTIVE });
+    if (!target) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
+
+    // Any match record (matched, unmatched or blocked) closes this channel.
+    const match = await MatchRepository.findOneByFilter({ users: { $all: [new ObjectId(userId), new ObjectId(toUserId)] } });
+    if (match) throw new BusinessException(c.CODE_ERROR_ALREADY_MATCHED);
+
+    const alreadySent = await QuickMessageRepository.findOneByFilter({ fromUserId: userId, toUserId });
+    if (alreadySent) throw new BusinessException(c.CODE_ERROR_QUICK_MESSAGE_ALREADY_SENT);
+};
+
+/**
+ * GET /api/actions/quick-messages/received?cursor=
+ * Everyone gets the list (count + sender teaser, like "likes received"), but the
+ * message text is only projected out of MongoDB for premium users; free users
+ * receive `content: null, locked: true`.
+ */
+const quickMessagesReceived = async (req) => {
+    const userId = jwtUtil.getValueFromJwtToken(req.headers['authorization'], 'id');
+    const canRead = await PremiumService.isPremium(userId);
+    const limit = pageSize();
+
+    const pipeline = buildReceivedPipeline(userId, req.query.cursor, canRead, limit);
+    const results = await QuickMessageRepository.findByPipeline(pipeline);
+
+    const hasMore = results.length === limit;
+    const nextCursor = hasMore ? results[results.length - 1]._id : null;
+    return new BaseResponse(true, [], new BasePaginatedResponse(results, {
+        nextCursor,
+        pageSize: results.length,
+        hasMore
+    }));
+};
+
+module.exports = { sendQuickMessage, quickMessagesReceived };
