@@ -95,3 +95,29 @@ test('managed TURN (Cloudflare) credentials are requested with a TTL', async () 
     assert.equal(JSON.parse(request.init.body).ttl, 120);
     assert.equal(servers[0].username, 'u');
 });
+
+test('match flags: one "yes" is only a hint; the peer is revealed after the match is created', () => {
+    const base = { hostId: 'h', guestId: 'g' };
+    assert.deepEqual(Rules.matchFlagsFor({ ...base, hostWantsMatch: true }, 'g'), { iWantMatch: false, peerWantsMatch: true, revealed: false });
+    assert.deepEqual(Rules.matchFlagsFor({ ...base, hostWantsMatch: true }, 'h'), { iWantMatch: true, peerWantsMatch: false, revealed: false });
+    // Both said yes but the match is still being created: nothing revealed yet.
+    assert.equal(Rules.matchFlagsFor({ ...base, hostWantsMatch: true, guestWantsMatch: true, matchState: 'creating' }, 'g').revealed, false);
+    assert.equal(Rules.matchFlagsFor({ ...base, hostWantsMatch: true, guestWantsMatch: true, matchState: 'done', chatId: 'c' }, 'g').revealed, true);
+    assert.equal(Rules.roleOf(base, 'h'), 'host');
+    assert.equal(Rules.roleOf(base, 'g'), 'guest');
+});
+
+test('race: both pressing "Match" at once creates the match exactly once', async () => {
+    const doc = { _id: 'r', hostWantsMatch: true, guestWantsMatch: true };
+    let created = 0;
+    const claim = async () => {
+        await new Promise(resolve => setImmediate(resolve));
+        if (doc.matchState !== undefined) return null;
+        doc.matchState = 'creating';
+        created++;
+        return { ...doc };
+    };
+    const results = await Promise.all([claim(), claim()]);
+    assert.equal(results.filter(Boolean).length, 1);
+    assert.equal(created, 1);
+});

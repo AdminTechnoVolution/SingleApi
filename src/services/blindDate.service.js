@@ -76,6 +76,26 @@ const liveRoomOf = (userId) => BlindDate.findOne({
     status: { $in: Rules.LIVE_STATUSES }
 });
 
+/**
+ * Full public profiles of both participants (same projection as GET /api/users/:id).
+ * Only called once the match is mutual. Lazy require: user.service pulls in heavy clients.
+ */
+const loadRevealProfile = async (userId) => {
+    try {
+        const UserService = require('./user.service');
+        return (await UserService.getUserById({ params: { userId: String(userId) } })).data || null;
+    } catch (err) {
+        logger.error(`blind date reveal profile ${userId} failed: ${err}`, { className: filename });
+        return null;
+    }
+};
+
+const buildReveal = async (room) => {
+    if (!room?.chatId || !room.guestId) return null;
+    const [host, guest] = await Promise.all([loadRevealProfile(room.hostId), loadRevealProfile(room.guestId)]);
+    return { chatId: String(room.chatId), host, guest };
+};
+
 /** View of a room for one of its participants. */
 const participantView = async (room, userId) => {
     const isHost = String(room.hostId) === String(userId);
@@ -85,6 +105,7 @@ const participantView = async (room, userId) => {
         const guest = await UserRepository.findById(peerId, 'userInfo.fullName');
         peerName = String(guest?.userInfo?.fullName || '').trim().split(/\s+/)[0] || null;
     }
+    const { iWantMatch, peerWantsMatch, revealed } = Rules.matchFlagsFor(room, userId);
     return {
         ...Rules.toPublicRoom(room),
         role: isHost ? 'host' : 'guest',
@@ -92,7 +113,10 @@ const participantView = async (room, userId) => {
         peerName,
         matched_at: room.matched_at,
         call_started_at: room.call_started_at,
-        chatId: room.chatId || null
+        chatId: revealed ? String(room.chatId) : null,
+        iWantMatch,
+        peerWantsMatch,
+        reveal: revealed ? await buildReveal(room) : null
     };
 };
 
@@ -255,8 +279,10 @@ const markInCall = async (roomId) => BlindDate.updateOne(
     { $set: { status: 'in_call', call_started_at: new Date() } });
 
 /**
- * After the call both answer "match?". When both say yes, exactly one request
- * (guarded by matchState) creates the match + chat through LikesService.matchTasks.
+ * "Match" can be pressed during the call or answered after it.
+ *  - One yes → the other participant gets bd:peerWantsMatch (shown as a hint).
+ *  - Both yes → exactly one request (guarded by matchState) creates the match + chat
+ *    through LikesService.matchTasks; then both profiles are revealed (bd:matched + REST).
  */
 const matchIntent = async (req) => {
     const userId = userIdFrom(req);
@@ -266,20 +292,24 @@ const matchIntent = async (req) => {
     if (!Rules.isParticipant(room, userId) || !room.guestId) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_NOT_FOUND);
     if (!['ended', 'in_call'].includes(room.status)) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_NOT_FOUND);
 
-    const field = String(room.hostId) === String(userId) ? 'hostWantsMatch' : 'guestWantsMatch';
+    const role = Rules.roleOf(room, userId);
+    const field = role === 'host' ? 'hostWantsMatch' : 'guestWantsMatch';
     const updated = await BlindDate.findOneAndUpdate({ _id: roomId }, { $set: { [field]: wantsMatch } }, { new: true });
     if (!(updated.hostWantsMatch && updated.guestWantsMatch)) {
         const peerField = field === 'hostWantsMatch' ? 'guestWantsMatch' : 'hostWantsMatch';
         const peerAnswered = typeof updated[peerField] === 'boolean';
-        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: false, waitingForPeer: wantsMatch && !peerAnswered });
+        if (wantsMatch) emitToRoom(roomId, 'bd:peerWantsMatch', { roomId: String(roomId), by: role });
+        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: false, waitingForPeer: wantsMatch && !peerAnswered, reveal: null });
     }
 
     const winner = await BlindDate.findOneAndUpdate(
         { _id: roomId, hostWantsMatch: true, guestWantsMatch: true, matchState: { $exists: false } },
         { $set: { matchState: 'creating' } }, { new: true });
     if (!winner) {
-        const done = await BlindDate.findById(roomId);
-        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: Boolean(done?.chatId), chatId: done?.chatId || null });
+        // The peer's request is creating (or created) the match: wait briefly for it.
+        const done = await waitForMatchDone(roomId);
+        const reveal = await buildReveal(done);
+        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: Boolean(reveal), chatId: reveal?.chatId || null, reveal });
     }
 
     const otherId = String(Rules.otherParticipant(updated, userId));
@@ -290,8 +320,22 @@ const matchIntent = async (req) => {
         const data = await LikesService.matchTasks(String(userId), { toUserId: otherId }, { isMatch: true });
         chatId = data.chatId;
     }
-    await BlindDate.updateOne({ _id: roomId }, { $set: { matchState: 'done', chatId } });
-    return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: Boolean(chatId), chatId });
+    const finished = await BlindDate.findOneAndUpdate({ _id: roomId }, { $set: { matchState: 'done', chatId } }, { new: true });
+    const reveal = await buildReveal(finished);
+    if (reveal) emitToRoom(roomId, 'bd:matched', { roomId: String(roomId), ...reveal });
+    return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: Boolean(reveal), chatId: reveal?.chatId || null, reveal });
+};
+
+const MATCH_WAIT_ATTEMPTS = 10;
+const MATCH_WAIT_STEP_MS = 300;
+const waitForMatchDone = async (roomId) => {
+    for (let attempt = 0; attempt < MATCH_WAIT_ATTEMPTS; attempt++) {
+        const room = await BlindDate.findById(roomId);
+        if (!room || room.matchState === 'done') return room;
+        await new Promise(resolve => setTimeout(resolve, MATCH_WAIT_STEP_MS));
+    }
+    // Still creating: the bd:matched event will deliver the reveal.
+    return null;
 };
 
 const turnCredentials = async (req) => {

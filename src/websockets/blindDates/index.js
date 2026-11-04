@@ -20,6 +20,8 @@ const consCache = require('../../../shared/util/constants.cache');
  *  bd:hangup {roomId}           →     bd:peerLeft {roomId}
  *  (REST join)                  →     bd:guestJoined {roomId, guestName}  (to the host)
  *  (socket drop)                →     bd:peerOffline {roomId}   (media is P2P and may survive)
+ *  (REST match, one yes)       →     bd:peerWantsMatch {roomId, by}   (hint for the other one)
+ *  (REST match, both yes)      →     bd:matched {roomId, chatId, host, guest}   (profiles revealed)
  */
 const MAX_SDP_LENGTH = 20000;
 

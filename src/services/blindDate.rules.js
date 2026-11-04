@@ -107,6 +107,21 @@ const isParticipant = (room, userId) =>
 const otherParticipant = (room, userId) =>
     String(room.hostId) === String(userId) ? room.guestId : room.hostId;
 
+const roleOf = (room, userId) => (String(room.hostId) === String(userId) ? 'host' : 'guest');
+
+/**
+ * Match state as seen by one participant. The peer's identity is only
+ * revealed once BOTH said yes and the match was created (matchState 'done').
+ */
+const matchFlagsFor = (room, userId) => {
+    const isHost = roleOf(room, userId) === 'host';
+    return {
+        iWantMatch: (isHost ? room.hostWantsMatch : room.guestWantsMatch) === true,
+        peerWantsMatch: (isHost ? room.guestWantsMatch : room.hostWantsMatch) === true,
+        revealed: room.matchState === 'done' && Boolean(room.chatId)
+    };
+};
+
 module.exports = {
     OPEN_ROOM_TTL_MS,
     HOST_CONNECT_TIMEOUT_MS,
@@ -119,5 +134,7 @@ module.exports = {
     buildClaimFilter,
     toPublicRoom,
     isParticipant,
-    otherParticipant
+    otherParticipant,
+    roleOf,
+    matchFlagsFor
 };
