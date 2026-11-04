@@ -6,7 +6,10 @@ const UserRepository = require('../repository/user.repository');
 const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
+const DiscoverOrder = require('../../shared/util/discoverOrder');
 const limitGetUsersDiscover = Number(process.env.LIMIT_GET_USERS_DISCOVER);
+// Nearest N candidates that take part in a round (keeps the id scan bounded).
+const discoverMaxCandidates = Number(process.env.DISCOVER_MAX_CANDIDATES) || 1000;
 
 const getUsersDiscover = async (req) => {
     const queryParams = req.query;
@@ -17,12 +20,20 @@ const getUsersDiscover = async (req) => {
     const user = await UserRepository.findById(userId, exclussions, false);
     if (!user) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
 
-    const pipeline = await createPipeline(user, queryParams);
+    // 1) Ids of every eligible candidate (cheap: _id only).
+    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true }));
+    const ids = candidates.map(u => u._id.toString());
 
-    let users = await UserRepository.findByPipeline(pipeline, true);
+    // 2) Seeded random page: a new round (no cursor) = a new order.
+    const { pageIds, hasMore, nextCursor } = DiscoverOrder.pageOf(ids, queryParams.cursor, limitGetUsersDiscover);
 
-    const hasMore = users.length === limitGetUsersDiscover;
-    const nextCursor = (hasMore && users.length > 0) ? users[users.length - 1]._id : null;
+    // 3) Full profiles for that page, returned in the shuffled order.
+    let users = [];
+    if (pageIds.length > 0) {
+        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds }), true);
+        const byId = new Map(found.map(u => [u._id.toString(), u]));
+        users = pageIds.map(id => byId.get(id)).filter(Boolean);
+    }
 
     const response = new BasePaginatedResponse(
         users,
@@ -35,9 +46,8 @@ const getUsersDiscover = async (req) => {
     return new BaseResponse(true, [], response);
 };
 
-const createPipeline = async (meUser, queryParams) => {
+const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
     // Precompute my data
-    const cursorObjectId = queryParams.cursor ? new ObjectId(queryParams.cursor) : null;
     const myGender = meUser.userInfo?.gender;
     const myPreferences = meUser.preferences?.preferences;
     const myMaxDistance = meUser.profileConfig?.maximumDistance;
@@ -63,14 +73,16 @@ const createPipeline = async (meUser, queryParams) => {
         status: constants.STATUS_DESC_ACTIVE
     };
 
-    // Filter by cursor to paginate results
-    if (cursorObjectId) {
-        matchStage._id = { ...matchStage._id, $gt: cursorObjectId };
+    // Second phase: only the profiles of the requested page
+    if (pageIds) {
+        matchStage._id = { ...matchStage._id, $in: pageIds.map(id => new ObjectId(id)) };
     }
 
     pipeline.push({ $match: matchStage });
 
-    // Lookup user likes and exclude them
+    // Lookup my like on each profile. Liked profiles are NOT excluded: they keep
+    // appearing with `likedByMe: true` so the app shows the heart already marked.
+    // Only matched/blocked pairs are excluded (below).
     pipeline.push(
         {
             $lookup: {
@@ -93,8 +105,37 @@ const createPipeline = async (meUser, queryParams) => {
             }
         },
         {
-            $match: {
-                likesFromMe: { $eq: [] }
+            $addFields: {
+                likedByMe: { $gt: [{ $size: "$likesFromMe" }, 0] }
+            }
+        }
+    );
+
+    // Same for my (non-expired) dislikes: shown again, marked `dislikedByMe`.
+    pipeline.push(
+        {
+            $lookup: {
+                from: "dislikes",
+                let: { targetId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$toUserId", "$$targetId"] },
+                                    { $eq: ["$fromUserId", new ObjectId(meUser._id)] }
+                                ]
+                            }
+                        }
+                    },
+                    { $limit: 1 }
+                ],
+                as: "dislikesFromMe"
+            }
+        },
+        {
+            $addFields: {
+                dislikedByMe: { $gt: [{ $size: "$dislikesFromMe" }, 0] }
             }
         }
     );
@@ -176,6 +217,16 @@ const createPipeline = async (meUser, queryParams) => {
         }
     });
 
+    if (idsOnly) {
+        // $geoNear output is distance-sorted: keep the nearest candidates.
+        pipeline.push(
+            { $sort: { distance: 1, _id: 1 } },
+            { $limit: discoverMaxCandidates },
+            { $project: { _id: 1 } }
+        );
+        return pipeline;
+    }
+
     // Exclude fields
     pipeline.push({
         $project:
@@ -185,15 +236,11 @@ const createPipeline = async (meUser, queryParams) => {
             'userInfo.birthdate': 0,
             'created_at': 0,
             'status': 0,
-            'likesFromMe': 0
+            'likesFromMe': 0,
+            'dislikesFromMe': 0,
+            'matchWithMe': 0
         }
     });
-
-    // Sort and limit for pagination
-    pipeline.push(
-        { $sort: { distance: 1, _id: 1 } },
-        { $limit: limitGetUsersDiscover }
-    );
 
     return pipeline;
 };

@@ -7,6 +7,8 @@ const UserRepository = require('../repository/user.repository');
 const DislikesRepository = require('../repository/dislikes.repository');
 const QuickMessageRepository = require('../repository/quickMessage.repository');
 const Dislikes = require('../models/dislikes.model');
+const LikeRepository = require('../repository/likes.repository');
+const ObjectId = require('mongoose').Types.ObjectId;
 const ttlRecordDislikeSecs = process.env.RECORD_DISLIKE_TTL_SECS;
 
 const sendDislike = async (req) => {
@@ -26,6 +28,9 @@ const sendDislike = async (req) => {
 
         await DislikesRepository.save(dislike);
     }
+
+    // Like and dislike are exclusive: disliking withdraws my pending like.
+    await LikeRepository.deleteManyByFilter({ fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) });
 
     // Passing on someone also clears any quick message they sent you.
     await QuickMessageRepository.deleteManyByFilter({ fromUserId: body.toUserId, toUserId: userId });

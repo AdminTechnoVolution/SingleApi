@@ -15,6 +15,7 @@ const { buildReceivedPipeline } = require('./quickMessage.pipeline');
 const LikesService = require('./likes.service');
 const QuickMessageRepository = require('../repository/quickMessage.repository');
 const LikeRepository = require('../repository/likes.repository');
+const DislikesRepository = require('../repository/dislikes.repository');
 const MatchRepository = require('../repository/match.repository');
 const UserRepository = require('../repository/user.repository');
 const QuickMessage = require('../models/quickMessage.model');
@@ -42,6 +43,8 @@ const sendQuickMessage = async (req) => {
     if (!existingLike.length) {
         await LikeRepository.save(new Likes({ fromUserId: userId, toUserId }));
     }
+    // Like and dislike are exclusive: the latest action wins.
+    await DislikesRepository.deleteManyByFilter({ fromUserId: new ObjectId(userId), toUserId: new ObjectId(toUserId) });
 
     const isMatch = await LikesService.validateIsMatch({ toUserId }, userId);
     let data = { isMatch };

@@ -15,6 +15,7 @@ const MatchRepository = require('../repository/match.repository');
 const UserRepository = require('../repository/user.repository');
 const PremiumService = require('./premium.service');
 const QuickMessageRepository = require('../repository/quickMessage.repository');
+const DislikesRepository = require('../repository/dislikes.repository');
 const ConversationRepository = require('../repository/conversation.repository');
 const Conversation = require('../models/conversation.model');
 const Likes = require('../models/likes.model');
@@ -28,7 +29,18 @@ const sendLike = async (req) => {
     const userId = jwtUtil.getValueFromJwtToken(token, 'id');
     let body = req.body;
     await validateSendLike(body, userId);
+
+    // Idempotent: liked profiles reappear in discover, so a repeated like must
+    // not fail on the unique index nor consume another daily like.
+    const alreadyLiked = await LikeRepository.findByAnyFilter({ fromUserId: userId, toUserId: body.toUserId });
+    if (Array.isArray(alreadyLiked) && alreadyLiked.length > 0) {
+        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: false, alreadyLiked: true });
+    }
+
     await validateLikesPerDay(userId);
+
+    // Like and dislike are exclusive: the latest action wins.
+    await DislikesRepository.deleteManyByFilter({ fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) });
 
     const like = new Likes({
         fromUserId: userId,
