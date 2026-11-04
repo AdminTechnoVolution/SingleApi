@@ -49,6 +49,7 @@ const unmatched = async (req) => {
     // likes, dislikes, quick messages): they can meet again from scratch.
     const otherId = match.users.map(String).find(id => id !== String(userId));
     await RelationshipService.purgeRelationship(userId, otherId);
+    await require('./call.service').endCallsBetween(userId, otherId);
 
     return new BaseResponse(true);
 }
@@ -69,6 +70,9 @@ const blocked = async (req) => {
         });
 
     if (result.matchedCount === 0) throw new BusinessException(c.CODE_MATCH_NOT_FOUND);
+    const match = await MatchRepository.findOneByFilter({ _id: new ObjectId(matchId) });
+    const otherId = match?.users?.map(String).find(id => id !== String(userId));
+    if (otherId) await require('./call.service').endCallsBetween(userId, otherId);
 
     return new BaseResponse(true);
 }

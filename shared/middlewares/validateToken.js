@@ -53,6 +53,8 @@ async function validateJwtSocketConnection(socket, next) {
             throw new BusinessException(c.CODE_ERROR_AUTH, constants.HTTP_UNATHORIZED);
 
         socket.userId = userId;
+        // Also in socket.data: visible through fetchSockets() (works across instances with an adapter).
+        socket.data = { ...(socket.data || {}), userId: String(userId) };
         socket.token = token;
 
         await redis.sAdd(`${consCache.REDIS_KEY_USER_SOCKETS}${userId}`, socket.id);

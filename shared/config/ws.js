@@ -6,7 +6,8 @@ const { Server } = require('socket.io');
 
 const namespaces = [
     { path: '/ws/chats', handler: require('../../src/websockets/chats') },
-    { path: '/ws/blind-dates', handler: require('../../src/websockets/blindDates') }
+    { path: '/ws/blind-dates', handler: require('../../src/websockets/blindDates') },
+    { path: '/ws/calls', handler: require('../../src/websockets/calls') }
 ];
 
 const allowedNamespaces = namespaces.map(ns => ns.path);

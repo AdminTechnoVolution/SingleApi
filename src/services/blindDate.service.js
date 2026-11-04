@@ -229,15 +229,32 @@ const joinRoom = async (req) => {
         emitLobby('bd:roomClosed', roomId);
         const view = await participantView(claimed, userId);
         const guestName = String(me.userInfo?.fullName || '').trim().split(/\s+/)[0] || null;
-        // Host: live socket if the waiting screen is open, push otherwise.
+        // Host: live socket if the waiting screen is open, push ONLY when they are not in the room.
         emitToRoom(roomId, 'bd:guestJoined', { roomId: String(roomId), guestName });
-        PushNotification.proccessNotificationsByUser(String(claimed.hostId), constants.WS_EVENT_NEW_BLIND_DATE_GUEST,
-            new BaseResponse(true, [], { roomId: String(roomId), url: '/?section=blindDates' }));
+        notifyHostIfAway(roomId, claimed.hostId);
         scheduleHostTimeout(roomId, userId, now);
         return new BaseResponse(true, [c.CODE_SUCCESS], view);
     } finally {
         await redis.del(lockKey).catch(() => undefined);
     }
+};
+
+/** True when one of the user's sockets is joined to the room channel (waiting screen open). */
+const isInRoom = async (roomId, userId) => {
+    try {
+        const { getSocketIO } = require('../../shared/config/ws');
+        const sockets = await getSocketIO()?.of(NAMESPACE).in(roomChannel(roomId)).fetchSockets();
+        return (sockets || []).some(socket => String(socket.data?.userId) === String(userId));
+    } catch (err) {
+        logger.error(`blind date presence check failed: ${err}`, { className: filename });
+        return false; // when unsure, notify
+    }
+};
+
+const notifyHostIfAway = async (roomId, hostId) => {
+    if (await isInRoom(roomId, hostId)) return;
+    PushNotification.proccessNotificationsByUser(String(hostId), constants.WS_EVENT_NEW_BLIND_DATE_GUEST,
+        new BaseResponse(true, [], { roomId: String(roomId), url: '/?section=blindDates' }));
 };
 
 /** If the host never starts the call, the guest is released and the room reopens. */
@@ -416,6 +433,7 @@ const blockPair = async (userId, otherId) => {
         { users: { $all: [me, other] } },
         { $set: { status: MatchStatus.BLOCKED, lastUpdatedBy: me, updated_at: new Date() }, $setOnInsert: { users: [me, other].sort((a, b) => String(a).localeCompare(String(b))) } },
         { upsert: true });
+    await require('./call.service').endCallsBetween(userId, otherId);
 };
 
 const turnCredentials = async (req) => {

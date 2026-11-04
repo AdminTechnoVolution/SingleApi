@@ -40,6 +40,8 @@ module.exports = {
     WS_EVENT_NEW_MATCH: "newMatch",
     WS_EVENT_NEW_QUICK_MESSAGE: "newQuickMessage",
     WS_EVENT_NEW_BLIND_DATE_GUEST: "newBlindDateGuest",
+    WS_EVENT_INCOMING_CALL: "incomingCall",
+    WS_EVENT_CALL_STATUS: "callStatus",
     BLIND_DATE_ROOMS_PER_DAY: "BLIND_DATE_ROOMS_PER_DAY",
     UNKNOWN_NOTIFICATION_TYPE: "Unknown notification type",
     DEFAULT_SORTING_BY_NAME: { "language.0.name": 1 },
