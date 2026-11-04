@@ -16,6 +16,7 @@ const CallService = require('../../services/call.service');
  *  call:offer  {callId, sdp}        →    call:offer  {callId, sdp}      (caller → callee)
  *  call:answer {callId, sdp}        →    call:answer {callId, sdp}      (callee → caller)
  *  call:ice    {callId, candidate}  →    call:ice    {callId, candidate}
+ *  call:ready  {callId}            →    call:ready  {callId}           (callee → caller: send/resend the offer)
  *  call:media  {callId, camOn, micOn}→   call:media  {callId, camOn, micOn}
  *  call:hangup {callId}             →    call:status {callId, status: ended|cancelled|declined, by}
  *  (REST POST /api/calls)           →    call:incoming {call}           (to the callee)
@@ -59,6 +60,8 @@ module.exports = (namespace) => {
         relay('call:offer', ({ callId, sdp }) => ({ callId, sdp: String(sdp) }));
         relay('call:answer', ({ callId, sdp }) => ({ callId, sdp: String(sdp) }));
         relay('call:ice', ({ callId, candidate }) => ({ callId, candidate }));
+        // Callee: "my peer is ready, send me the offer" (repeated until it arrives: covers lost events).
+        relay('call:ready', ({ callId }) => ({ callId }));
         relay('call:media', ({ callId, camOn, micOn }) => ({ callId, camOn: camOn !== false, micOn: micOn !== false }));
 
         socket.on('call:hangup', async (raw) => {
