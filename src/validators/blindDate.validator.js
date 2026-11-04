@@ -40,4 +40,11 @@ const blindDateMatchIntentSchema = Joi.object({
     wantsMatch: Joi.boolean().required().messages({ 'any.required': c.CODE_MALFORMED_BAD_REQUEST })
 });
 
-module.exports = { blindDateCreateSchema, blindDateMatchIntentSchema };
+/** Report and/or block the other participant (at least one of the two). */
+const blindDateReportSchema = Joi.object({
+    reportReason: Joi.string().trim().max(64),
+    message: Joi.string().trim().allow('').max(512),
+    block: Joi.boolean()
+}).or('reportReason', 'block').messages({ 'object.missing': c.CODE_MALFORMED_BAD_REQUEST });
+
+module.exports = { blindDateCreateSchema, blindDateMatchIntentSchema, blindDateReportSchema };

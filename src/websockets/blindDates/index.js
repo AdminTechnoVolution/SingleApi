@@ -20,6 +20,7 @@ const consCache = require('../../../shared/util/constants.cache');
  *  bd:hangup {roomId}           →     bd:peerLeft {roomId}
  *  (REST join)                  →     bd:guestJoined {roomId, guestName}  (to the host)
  *  (socket drop)                →     bd:peerOffline {roomId}   (media is P2P and may survive)
+ *  bd:lobby / bd:lobbyLeave      →     bd:roomOpened / bd:roomClosed {roomId}  (room list changed)
  *  (REST match, one yes)       →     bd:peerWantsMatch {roomId, by}   (hint for the other one)
  *  (REST match, both yes)      →     bd:matched {roomId, chatId, host, guest}   (profiles revealed)
  */
@@ -45,6 +46,10 @@ module.exports = (namespace) => {
                     logger.error(`markInCall failed: ${err}`, { className: filename }));
             }
         });
+
+        // Room list screen: join/leave the lobby to get bd:roomOpened / bd:roomClosed.
+        socket.on('bd:lobby', () => socket.join(BlindDateService.LOBBY_CHANNEL));
+        socket.on('bd:lobbyLeave', () => socket.leave(BlindDateService.LOBBY_CHANNEL));
 
         socket.on('bd:hello', async (raw) => {
             const body = parse(raw);

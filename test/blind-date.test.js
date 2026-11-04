@@ -121,3 +121,17 @@ test('race: both pressing "Match" at once creates the match exactly once', async
     assert.equal(results.filter(Boolean).length, 1);
     assert.equal(created, 1);
 });
+
+test('report validator: needs a reason or a block, and caps the message', () => {
+    const { blindDateReportSchema } = require('../src/validators/blindDate.validator');
+    assert.ok(blindDateReportSchema.validate({}).error);
+    assert.equal(blindDateReportSchema.validate({ block: true }).error, undefined);
+    assert.equal(blindDateReportSchema.validate({ reportReason: 'spam', message: 'x' }).error, undefined);
+    assert.ok(blindDateReportSchema.validate({ reportReason: 'spam', message: 'x'.repeat(600) }).error);
+});
+
+test('lobby channel is not a room channel (peerOffline only targets "bd:" rooms)', () => {
+    const source = require('fs').readFileSync(require('path').join(__dirname, '../src/services/blindDate.service.js'), 'utf8');
+    const lobby = source.match(/LOBBY_CHANNEL = '([^']+)'/)[1];
+    assert.equal(lobby.startsWith('bd:'), false);
+});

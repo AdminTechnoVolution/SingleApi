@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const validateBody = require('../../shared/middlewares/validateBody');
 const validateToken = require('../../shared/middlewares/validateToken');
-const { blindDateCreateSchema, blindDateMatchIntentSchema } = require('../validators/blindDate.validator');
+const { blindDateCreateSchema, blindDateMatchIntentSchema, blindDateReportSchema } = require('../validators/blindDate.validator');
 const BlindDateController = require('../controllers/blindDate.controller');
 
 /**
@@ -35,6 +35,7 @@ router.get('/blind-dates', validateToken, BlindDateController.listRooms);
  *     summary: Short-lived ICE servers (STUN/TURN) for the WebRTC voice call.
  */
 router.get('/blind-dates/mine', validateToken, BlindDateController.myRoom);
+router.get('/blind-dates/preferences', validateToken, BlindDateController.getPreferences);
 router.get('/blind-dates/turn-credentials', validateToken, BlindDateController.turnCredentials);
 
 /**
@@ -56,6 +57,7 @@ router.get('/blind-dates/turn-credentials', validateToken, BlindDateController.t
  */
 router.post('/blind-dates/:id/join', validateToken, BlindDateController.joinRoom);
 router.post('/blind-dates/:id/leave', validateToken, BlindDateController.leaveRoom);
+router.post('/blind-dates/:id/report', validateToken, validateBody(blindDateReportSchema), BlindDateController.reportPeer);
 router.post('/blind-dates/:id/match', validateToken, validateBody(blindDateMatchIntentSchema), BlindDateController.matchIntent);
 
 module.exports = router;

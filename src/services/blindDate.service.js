@@ -11,6 +11,8 @@ const redis = require('../../shared/config/redis');
 const PushNotification = require('../../shared/util/pushNotification');
 const { getIceServers } = require('../../shared/util/turnCredentials');
 const BlindDate = require('../models/blindDate.model');
+const BlindDatePreference = require('../models/blindDatePreference.model');
+const MatchStatus = require('../enums/EnumMatchStatus');
 const Match = require('../models/match.model');
 const UserRepository = require('../repository/user.repository');
 const PremiumService = require('./premium.service');
@@ -25,6 +27,8 @@ const JOIN_LOCK_SECS = 10;
 
 const userIdFrom = (req) => jwtUtil.getValueFromJwtToken(req.headers['authorization'], 'id');
 const roomChannel = (roomId) => `bd:${roomId}`;
+/** Users browsing the room list. Not prefixed "bd:" (that prefix means "a room" for peerOffline). */
+const LOBBY_CHANNEL = 'lobby:blind-dates';
 
 const emitToRoom = (roomId, event, payload) => {
     try {
@@ -33,6 +37,19 @@ const emitToRoom = (roomId, event, payload) => {
         getSocketIO()?.of(NAMESPACE).to(roomChannel(roomId)).emit(event, payload);
     } catch (err) {
         logger.error(`blind date emit ${event} failed: ${err}`, { className: filename });
+    }
+};
+
+/**
+ * Lobby: the list changed. Only ids travel; each client re-fetches GET /api/blind-dates,
+ * which applies the compatibility filter server-side (no conditions leak to incompatible users).
+ */
+const emitLobby = (event, roomId) => {
+    try {
+        const { getSocketIO } = require('../../shared/config/ws');
+        getSocketIO()?.of(NAMESPACE).to(LOBBY_CHANNEL).emit(event, { roomId: String(roomId) });
+    } catch (err) {
+        logger.error(`blind date lobby ${event} failed: ${err}`, { className: filename });
     }
 };
 
@@ -145,6 +162,8 @@ const createRoom = async (req) => {
             expires_at: new Date(now.getTime() + Rules.ROOM_RETENTION_MS)
         });
         logger.info(`Blind date room created: ${room._id} by ${userId}`, { className: filename, req });
+        await savePreferences(userId, room.conditions);
+        emitLobby('bd:roomOpened', room._id);
         return new BaseResponse(true, [c.CODE_SUCCESS], await participantView(room, userId));
     } catch (err) {
         // Unique partial index: a concurrent create by the same host.
@@ -207,6 +226,7 @@ const joinRoom = async (req) => {
         if (!claimed) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_TAKEN);
 
         logger.info(`Blind date ${roomId} claimed by ${userId}`, { className: filename, req });
+        emitLobby('bd:roomClosed', roomId);
         const view = await participantView(claimed, userId);
         const guestName = String(me.userInfo?.fullName || '').trim().split(/\s+/)[0] || null;
         // Host: live socket if the waiting screen is open, push otherwise.
@@ -228,7 +248,7 @@ const scheduleHostTimeout = (roomId, guestId, matchedAt) => {
                 { _id: roomId, status: 'matched', guestId: new ObjectId(guestId), matched_at: matchedAt },
                 { $set: { status: 'open', guestId: null }, $unset: { matched_at: 1 } },
                 { new: true });
-            if (reopened) emitToRoom(roomId, 'bd:hostUnavailable', { roomId: String(roomId) });
+            if (reopened) { emitToRoom(roomId, 'bd:hostUnavailable', { roomId: String(roomId) }); emitLobby('bd:roomOpened', roomId); }
         } catch (err) {
             logger.error(`blind date host timeout failed: ${err}`, { className: filename });
         }
@@ -256,12 +276,12 @@ const endForUser = async (roomId, userId, reason) => {
     const cancelled = await BlindDate.findOneAndUpdate(
         { _id: roomId, hostId: me, status: 'open' },
         { $set: { status: 'cancelled', ended_at: now, endedReason: 'cancelled' } }, { new: true });
-    if (cancelled) return cancelled;
+    if (cancelled) { emitLobby('bd:roomClosed', roomId); return cancelled; }
 
     const reopened = await BlindDate.findOneAndUpdate(
         { _id: roomId, guestId: me, status: 'matched' },
         { $set: { status: 'open', guestId: null }, $unset: { matched_at: 1 } }, { new: true });
-    if (reopened) { emitToRoom(roomId, 'bd:peerLeft', { roomId: String(roomId), reopened: true }); return reopened; }
+    if (reopened) { emitToRoom(roomId, 'bd:peerLeft', { roomId: String(roomId), reopened: true }); emitLobby('bd:roomOpened', roomId); return reopened; }
 
     const ended = await BlindDate.findOneAndUpdate(
         { _id: roomId, $or: [{ hostId: me }, { guestId: me }], status: { $in: ['matched', 'in_call'] } },
@@ -343,6 +363,61 @@ const waitForMatchDone = async (roomId) => {
     return null;
 };
 
+const savePreferences = async (userId, conditions) => {
+    try {
+        await BlindDatePreference.updateOne(
+            { userId: new ObjectId(userId) },
+            { $set: { conditions: Rules.normalizeConditions(conditions || {}), updated_at: new Date() } },
+            { upsert: true });
+    } catch (err) {
+        // Preferences are a convenience: never fail the room creation for them.
+        logger.error(`blind date preferences save failed: ${err}`, { className: filename });
+    }
+};
+
+/** Filters used last time, to pre-select them in the "create room" screen (null = never created one). */
+const getPreferences = async (req) => {
+    const userId = userIdFrom(req);
+    const pref = await BlindDatePreference.findOne({ userId: new ObjectId(userId) }).lean();
+    return new BaseResponse(true, [], pref ? Rules.normalizeConditions(pref.conditions || {}) : null);
+};
+
+/**
+ * Report and/or block the other participant from inside the call. The guest never
+ * learns the host id (and vice versa) before a match, so the server resolves it.
+ * Blocking stores a "blocked" match record: they never meet again (discover,
+ * blind dates, quick messages). The call ends for both.
+ */
+const reportPeer = async (req) => {
+    const userId = userIdFrom(req);
+    const roomId = parseRoomId(req.params.id);
+    const { reportReason, message, block } = req.body || {};
+    const room = await BlindDate.findById(roomId).lean();
+    if (!Rules.isParticipant(room, userId) || !room.guestId) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_NOT_FOUND);
+    const otherId = String(Rules.otherParticipant(room, userId));
+
+    if (reportReason) {
+        const ReportService = require('./report.service');
+        await ReportService.report({ headers: req.headers, body: { reportedUserId: otherId, reportReason, message } });
+    }
+    if (block) await blockPair(userId, otherId);
+
+    await endForUser(roomId, userId, block ? 'blocked' : 'reported');
+    logger.info(`Blind date ${roomId}: ${userId} reported=${Boolean(reportReason)} blocked=${Boolean(block)}`, { className: filename, req });
+    return new BaseResponse(true, [c.CODE_SUCCESS], { blocked: Boolean(block), reported: Boolean(reportReason) });
+};
+
+const blockPair = async (userId, otherId) => {
+    const me = new ObjectId(userId);
+    const other = new ObjectId(otherId);
+    // Start clean (likes, quick messages, a previous chat), then keep only the block.
+    await require('./relationship.service').purgeRelationship(userId, otherId);
+    await Match.updateOne(
+        { users: { $all: [me, other] } },
+        { $set: { status: MatchStatus.BLOCKED, lastUpdatedBy: me, updated_at: new Date() }, $setOnInsert: { users: [me, other].sort((a, b) => String(a).localeCompare(String(b))) } },
+        { upsert: true });
+};
+
 const turnCredentials = async (req) => {
     const userId = userIdFrom(req);
     await requirePremium(userId);
@@ -352,7 +427,10 @@ const turnCredentials = async (req) => {
 
 module.exports = {
     NAMESPACE,
+    LOBBY_CHANNEL,
     roomChannel,
+    getPreferences,
+    reportPeer,
     createRoom,
     listRooms,
     myRoom,

@@ -15,5 +15,7 @@ module.exports = {
   joinRoom: handle(BlindDateService.joinRoom),
   leaveRoom: handle(BlindDateService.leaveRoom),
   matchIntent: handle(BlindDateService.matchIntent),
-  turnCredentials: handle(BlindDateService.turnCredentials)
+  turnCredentials: handle(BlindDateService.turnCredentials),
+  getPreferences: handle(BlindDateService.getPreferences),
+  reportPeer: handle(BlindDateService.reportPeer)
 };
