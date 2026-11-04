@@ -71,6 +71,9 @@ const likeTasks = async (body) => {
 }
 
 const matchTasks = async (userId, body, data) => {
+    // A legacy "unmatched" record between them would leave a stale chat behind: start clean.
+    const legacy = await MatchRepository.findOneByFilter({ users: { $all: [new ObjectId(userId), new ObjectId(body.toUserId)] }, status: { $ne: 'matched' } });
+    if (legacy && legacy.status !== 'blocked') await require('./relationship.service').purgeRelationship(userId, body.toUserId);
     const orderedUsers = [userId, body.toUserId].sort();
     let match = new Match({
         users: orderedUsers

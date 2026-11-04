@@ -17,6 +17,8 @@ const QuickMessageRepository = require('../repository/quickMessage.repository');
 const LikeRepository = require('../repository/likes.repository');
 const DislikesRepository = require('../repository/dislikes.repository');
 const MatchRepository = require('../repository/match.repository');
+const MatchStatus = require('../enums/EnumMatchStatus');
+const RelationshipService = require('./relationship.service');
 const UserRepository = require('../repository/user.repository');
 const QuickMessage = require('../models/quickMessage.model');
 const Likes = require('../models/likes.model');
@@ -89,9 +91,11 @@ const validateSendQuickMessage = async (userId, toUserId) => {
     const target = await UserRepository.findOneByFilter({ _id: toUserId, status: constants.STATUS_DESC_ACTIVE });
     if (!target) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
 
-    // Any match record (matched, unmatched or blocked) closes this channel.
+    // A live match or a block closes this channel. Legacy "unmatched" records
+    // (from before unmatch deleted everything) are cleaned up instead.
     const match = await MatchRepository.findOneByFilter({ users: { $all: [new ObjectId(userId), new ObjectId(toUserId)] } });
-    if (match) throw new BusinessException(c.CODE_ERROR_ALREADY_MATCHED);
+    if (match?.status === MatchStatus.UNMATCHED) await RelationshipService.purgeRelationship(userId, toUserId);
+    else if (match) throw new BusinessException(c.CODE_ERROR_ALREADY_MATCHED);
 
     const alreadySent = await QuickMessageRepository.findOneByFilter({ fromUserId: userId, toUserId });
     if (alreadySent) throw new BusinessException(c.CODE_ERROR_QUICK_MESSAGE_ALREADY_SENT);

@@ -313,7 +313,12 @@ const matchIntent = async (req) => {
     }
 
     const otherId = String(Rules.otherParticipant(updated, userId));
-    const existing = await Match.findOne({ users: { $all: [new ObjectId(userId), new ObjectId(otherId)] } });
+    let existing = await Match.findOne({ users: { $all: [new ObjectId(userId), new ObjectId(otherId)] } });
+    if (existing && existing.status !== 'matched') {
+        // Legacy unmatched record: start clean so the new match gets a fresh chat.
+        await require('./relationship.service').purgeRelationship(userId, otherId);
+        existing = null;
+    }
     let chatId = existing?._id || null;
     if (!existing) {
         // Pushes newMatch to the other participant, like a regular reciprocal like.

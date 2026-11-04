@@ -7,6 +7,7 @@ const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
 const MatchStatus = require('../enums/EnumMatchStatus');
+const RelationshipService = require('./relationship.service');
 const limitGetMatches = Number(process.env.LIMIT_GET_MATCHES);
 
 const getMatches = async (req) => {
@@ -38,16 +39,16 @@ const unmatched = async (req) => {
     const userId = jwtUtil.getValueFromJwtToken(auth, 'id');
     const userIdMongo = new ObjectId(userId);
 
-    const result = await MatchRepository.updateOne({ _id: new ObjectId(matchId), users: userIdMongo },
-        {
-            $set: {
-                lastUpdatedBy: userIdMongo,
-                status: MatchStatus.UNMATCHED,
-                updated_at: new Date()
-            }
-        });
+    if (!ObjectId.isValid(matchId)) throw new BusinessException(c.CODE_MATCH_NOT_FOUND);
+    const match = await MatchRepository.findOneByFilter({ _id: new ObjectId(matchId), users: userIdMongo });
+    if (!match) throw new BusinessException(c.CODE_MATCH_NOT_FOUND);
+    // A block stays: the blocked person must not show up again.
+    if (match.status === MatchStatus.BLOCKED) return new BaseResponse(true);
 
-    if (result.matchedCount === 0) throw new BusinessException(c.CODE_MATCH_NOT_FOUND);
+    // Unmatch deletes everything between the two users (match, chat, messages,
+    // likes, dislikes, quick messages): they can meet again from scratch.
+    const otherId = match.users.map(String).find(id => id !== String(userId));
+    await RelationshipService.purgeRelationship(userId, otherId);
 
     return new BaseResponse(true);
 }
