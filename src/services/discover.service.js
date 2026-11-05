@@ -3,6 +3,7 @@ const BaseResponse = require('../../shared/util/baseResponse');
 const BasePaginatedResponse = require('../../shared/util/basePaginatedResponse');
 const BusinessException = require('../../shared/exceptionHandler/BusinessException');
 const UserRepository = require('../repository/user.repository');
+const UserActivity = require('./userActivity.service');
 const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
@@ -19,6 +20,10 @@ const getUsersDiscover = async (req) => {
     const exclussions = '-password -created_at -status -email';
     const user = await UserRepository.findById(userId, exclussions, false);
     if (!user) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
+
+    // Discover is the first screen after opening the app: its first page (no cursor)
+    // marks the user's last activity. Fire-and-forget, throttled per user.
+    if (!queryParams.cursor) UserActivity.recordActivity(userId);
 
     // 1) Ids of every eligible candidate (cheap: _id only).
     const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true }));
@@ -258,7 +263,8 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
             'status': 0,
             'likesFromMe': 0,
             'dislikesFromMe': 0,
-            'matchWithMe': 0
+            'matchWithMe': 0,
+            'lastActivityAt': 0
         }
     });
 

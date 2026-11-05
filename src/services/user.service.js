@@ -671,7 +671,8 @@ const createPipeline = async (id) => {
             'email': 0,
             'created_at': 0,
             'status': 0,
-            'platform': 0
+            'platform': 0,
+            'lastActivityAt': 0
         }
     });
 
