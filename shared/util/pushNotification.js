@@ -43,6 +43,15 @@ async function getDataForNotification(event, data) {
             title = 'New like';
             body = "You've got a new like!";
             break;
+        case constants.WS_EVENT_NEW_QUICK_MESSAGE:
+            // Content stays out of the push: only subscribers may read it in-app.
+            title = 'New quick message';
+            body = "Someone sent you a quick message!";
+            break;
+        case constants.WS_EVENT_NEW_BLIND_DATE_GUEST:
+            title = 'Blind date';
+            body = 'Someone joined your blind date. Tap to start the call!';
+            break;
         case constants.WS_EVENT_NEW_MATCH:
             title = 'New Match';
             body = 'Open Chat';
@@ -99,4 +108,29 @@ async function sendPush(token, eventType, payload = {}, title = '', body = '', i
     }
 }
 
-module.exports = { sendPush, proccessNotificationsByUser };
+/**
+ * Data-only push to every device of a user (calls). Android handles it natively
+ * (full-screen incoming call); the PWA service worker builds the notification.
+ * ttlSecs: a ring that cannot be delivered in time is useless, so it expires.
+ */
+async function sendDataPushToUser(userIdTo, eventType, data = {}, { ttlSecs = 60 } = {}) {
+    const resultFCMs = await FCMRepository.findOneByFilter({ userId: new ObjectId(userIdTo) });
+    for (const token of resultFCMs?.fcmTokens || []) {
+        try {
+            const response = await firebase.messaging().send({
+                token,
+                android: { priority: "high", ttl: ttlSecs * 1000 },
+                webpush: { headers: { Urgency: "high", TTL: String(ttlSecs) } },
+                data: { type: eventType, payload: JSON.stringify({ data }) }
+            });
+            logger.info(`Data push ${eventType} sent. FCM Response: ${response}`, { className: filename });
+        } catch (error) {
+            logger.error(`Error sendDataPushToUser ${eventType}. FCM Error: ${error}`, { className: filename });
+            if (["messaging/invalid-registration-token", "messaging/registration-token-not-registered"].includes(error.code)) {
+                await FCMRepository.findOneByFilterAndPullToken({ userId: new ObjectId(userIdTo) }, { fcmTokens: token });
+            }
+        }
+    }
+}
+
+module.exports = { sendPush, proccessNotificationsByUser, sendDataPushToUser };

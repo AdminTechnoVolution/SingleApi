@@ -5,7 +5,10 @@ const dislikesSchema = new mongoose.Schema({
   fromUserId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   toUserId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   created_at: { type: Date, default: Date.now },
-  expires_at: { type: Date }
+  expires_at: { type: Date },
+  // true = the user tapped ✕ (new app). Legacy swipe-dislikes stay false and are
+  // never shown as "disliked" in discover.
+  explicit: { type: Boolean, default: false }
 }, {
   versionKey: false
 });

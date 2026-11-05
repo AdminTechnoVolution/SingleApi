@@ -13,7 +13,11 @@ const LikeRepository = require('../repository/likes.repository');
 const ChatRepository = require('../repository/chat.repository');
 const MatchRepository = require('../repository/match.repository');
 const UserRepository = require('../repository/user.repository');
-const SubscriptionRepository = require('../repository/subscription.repository');
+const PremiumService = require('./premium.service');
+const QuickMessageRepository = require('../repository/quickMessage.repository');
+const DislikesRepository = require('../repository/dislikes.repository');
+const ConversationRepository = require('../repository/conversation.repository');
+const Conversation = require('../models/conversation.model');
 const Likes = require('../models/likes.model');
 const Chat = require('../models/chat.model');
 const Match = require('../models/match.model');
@@ -25,7 +29,18 @@ const sendLike = async (req) => {
     const userId = jwtUtil.getValueFromJwtToken(token, 'id');
     let body = req.body;
     await validateSendLike(body, userId);
+
+    // Idempotent: liked profiles reappear in discover, so a repeated like must
+    // not fail on the unique index nor consume another daily like.
+    const alreadyLiked = await LikeRepository.findByAnyFilter({ fromUserId: userId, toUserId: body.toUserId });
+    if (Array.isArray(alreadyLiked) && alreadyLiked.length > 0) {
+        return new BaseResponse(true, [c.CODE_SUCCESS], { isMatch: false, alreadyLiked: true });
+    }
+
     await validateLikesPerDay(userId);
+
+    // Like and dislike are exclusive: the latest action wins.
+    await DislikesRepository.deleteManyByFilter({ fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) });
 
     const like = new Likes({
         fromUserId: userId,
@@ -56,6 +71,9 @@ const likeTasks = async (body) => {
 }
 
 const matchTasks = async (userId, body, data) => {
+    // A legacy "unmatched" record between them would leave a stale chat behind: start clean.
+    const legacy = await MatchRepository.findOneByFilter({ users: { $all: [new ObjectId(userId), new ObjectId(body.toUserId)] }, status: { $ne: 'matched' } });
+    if (legacy && legacy.status !== 'blocked') await require('./relationship.service').purgeRelationship(userId, body.toUserId);
     const orderedUsers = [userId, body.toUserId].sort();
     let match = new Match({
         users: orderedUsers
@@ -74,6 +92,7 @@ const matchTasks = async (userId, body, data) => {
     });
 
     chat = await ChatRepository.save(chat);
+    await moveQuickMessagesIntoChat(chat, userId, body.toUserId);
 
     data.matchId = match._id;
     data.chatId = chat._id;
@@ -199,16 +218,7 @@ const validateLikesPerDay = async (userId) => {
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
 
-    const filter = {
-        userId: new ObjectId(userId),
-        'paymentInfo.fromDate': { $lte: now },
-        'paymentInfo.toDate': { $gte: now }
-    };
-
-    let subscriptionDB = await SubscriptionRepository.findByFilter(filter);
-    if (!subscriptionDB) {
-        subscriptionDB = await SubscriptionRepository.findActiveStripeForUser(new ObjectId(userId));
-    }
+    const subscriptionDB = await PremiumService.findActiveSubscription(userId);
     if (!subscriptionDB) {
         const configResponse = await ConfigService.getConfigs();
         const configs = configResponse.data;
@@ -225,4 +235,37 @@ const validateLikesPerDay = async (userId) => {
     }
 };
 
-module.exports = { sendLike, likesReceived };
+/**
+ * On match, pending quick messages between the pair (either direction) become
+ * the first messages of the new chat, then are removed from the inbox.
+ * Best-effort: a failure here must not undo an already-created match.
+ */
+const moveQuickMessagesIntoChat = async (chat, userA, userB) => {
+    try {
+        const pair = [new ObjectId(userA), new ObjectId(userB)];
+        const pending = await QuickMessageRepository.findByAnyFilter({
+            fromUserId: { $in: pair },
+            toUserId: { $in: pair }
+        });
+        if (!pending.length) return;
+
+        for (const qm of pending) {
+            const message = await ConversationRepository.save(new Conversation({
+                chatId: chat._id,
+                sender: qm.fromUserId,
+                content: qm.content,
+                seenBy: [qm.fromUserId],
+                created_at: qm.created_at
+            }));
+            chat.lastMessage = { content: qm.content, sender: qm.fromUserId, created_at: message.created_at };
+            const recipient = qm.toUserId.toString();
+            chat.unreadCounts.set(recipient, (chat.unreadCounts.get(recipient) || 0) + 1);
+        }
+        await chat.save();
+        await QuickMessageRepository.deleteManyByFilter({ _id: { $in: pending.map(qm => qm._id) } });
+    } catch (err) {
+        logger.error(`Error moving quick messages into chat ${chat._id}. Error: ${err}`, { className: filename });
+    }
+};
+
+module.exports = { sendLike, likesReceived, validateIsMatch, matchTasks };

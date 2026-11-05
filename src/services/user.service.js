@@ -85,6 +85,7 @@ const getUserMe = async (req) => {
     }
 
     if (!subscription) {
+        await require('./dlocalgo.service').refreshIfDue(userId);
         const stripeSubscription = await SubscriptionRepository.findActiveStripeForUser(userId);
         if (stripeSubscription) {
             const stripeData = stripeSubscription.toObject();
@@ -670,7 +671,8 @@ const createPipeline = async (id) => {
             'email': 0,
             'created_at': 0,
             'status': 0,
-            'platform': 0
+            'platform': 0,
+            'lastActivityAt': 0
         }
     });
 
@@ -689,7 +691,7 @@ async function verifySocialToken(body, req) {
 
     logger.info({ message: `Social Response: ${JSON.stringify(socialResponse)}`, className: filename, req: req });
 
-    if (socialResponse.email !== req.body.email) throw new BusinessException(c.CODE_EMAIL_INVALID);
+    if (String(socialResponse.email || '').toLowerCase() !== String(req.body.email || '').toLowerCase()) throw new BusinessException(c.CODE_EMAIL_INVALID);
 
     if (!socialResponse.isVerified) throw new BusinessException(c.CODE_ERROR_REGISTER);
 
