@@ -99,7 +99,10 @@ const getEntitlement = async (req) => {
         'paymentInfo.toDate': { $gte: now }
     });
     if (subscription && !googlePayClient.isActiveSubscriptionV2(subscription)) subscription = null;
-    if (!subscription) subscription = await SubscriptionRepository.findActiveStripeForUser(userId);
+    if (!subscription) {
+        await require('./dlocalgo.service').refreshIfDue(userId);
+        subscription = await SubscriptionRepository.findActiveStripeForUser(userId);
+    }
     return new BaseResponse(true, [], {
         premium: Boolean(subscription),
         provider: subscription?.provider || null,

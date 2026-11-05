@@ -14,7 +14,7 @@ const paymentInfoSchema = new mongoose.Schema({
 
 const subscriptionSchema = new mongoose.Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  provider: { type: String, enum: ['google_play', 'stripe'], default: 'google_play', index: true },
+  provider: { type: String, enum: ['google_play', 'stripe', 'dlocalgo'], default: 'google_play', index: true },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
   subscriptionId: { type: String, required: true },
@@ -24,6 +24,10 @@ const subscriptionSchema = new mongoose.Schema({
   orderId: { type: String, required: true },
   externalSubscriptionId: { type: String },
   externalCustomerId: { type: String },
+  /** dLocal Go: numeric plan id the subscription belongs to (needed by every subscription endpoint). */
+  externalPlanId: { type: String },
+  /** dLocal Go: last time the subscription was re-read from the API (rate-limits lazy syncs). */
+  lastSyncedAt: { type: Date },
   status: { type: String },
   currentPeriodStart: { type: Date },
   currentPeriodEnd: { type: Date },

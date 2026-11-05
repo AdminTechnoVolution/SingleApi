@@ -85,6 +85,7 @@ const getUserMe = async (req) => {
     }
 
     if (!subscription) {
+        await require('./dlocalgo.service').refreshIfDue(userId);
         const stripeSubscription = await SubscriptionRepository.findActiveStripeForUser(userId);
         if (stripeSubscription) {
             const stripeData = stripeSubscription.toObject();

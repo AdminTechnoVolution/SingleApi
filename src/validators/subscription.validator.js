@@ -57,7 +57,17 @@ const stripeCheckoutSchema = Joi.object({
     plan: Joi.string().valid('weekly', 'monthly', 'quarterly').required()
 });
 
+const dlocalGoCheckoutSchema = Joi.object({
+    plan: Joi.string().valid('weekly', 'monthly', 'quarterly').required()
+});
+
+const dlocalGoConfirmSchema = Joi.object({
+    externalId: Joi.string().max(255).required()
+});
+
 module.exports = {
     subscriptionSchema,
-    stripeCheckoutSchema
+    stripeCheckoutSchema,
+    dlocalGoCheckoutSchema,
+    dlocalGoConfirmSchema
 };

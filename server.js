@@ -52,6 +52,8 @@ app.use(correlationMiddleware);
 app.use(cors());
 app.use(helmet());
 app.post('/api/subscription/stripe/webhook', express.raw({ type: 'application/json' }), SubscriptionController.stripeWebhook);
+// Raw body for any content type: the signature (if sent) is computed over the exact bytes.
+app.post('/api/subscription/dlocalgo/webhook', express.raw({ type: () => true, limit: '100kb' }), SubscriptionController.dlocalGoWebhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
