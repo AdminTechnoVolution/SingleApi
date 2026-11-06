@@ -42,6 +42,15 @@ const FCMTokenRepository = require('../repository/fcmToken.repository');
 const ReportRepository = require('../repository/report.repository');
 const SubscriptionRepository = require('../repository/subscription.repository');
 const UserProfileSyncService = require('./userProfileSync.service');
+const DeletionRules = require('./accountDeletion.rules');
+const DlocalGo = require('../client/dlocalgo.client');
+const Subscription = require('../models/subscription.model');
+const QuickMessage = require('../models/quickMessage.model');
+const Call = require('../models/call.model');
+const BlindDate = require('../models/blindDate.model');
+const BlindDatePreference = require('../models/blindDatePreference.model');
+const Conversation = require('../models/conversation.model');
+const LegalHold = require('../models/legalHold.model');
 const azureUploader = new AzureUploader(process.env.S3_CONNECTION_STRING, process.env.S3_CONTAINER);
 
 const getUserById = async (req) => {
@@ -201,12 +210,18 @@ const deleteUserAccount = async (req) => {
     const token = req.headers['authorization'];
     const userId = jwtUtil.getValueFromJwtToken(token, 'id');
 
-    deleteUserAccountFlow(userId);
+    // Deletion is immediate: the response is sent only once every piece of data is gone.
+    await deleteUserAccountFlow(userId);
 
     message = c.CODE_SUCCESS;
     return new BaseResponse(true, [message]);
 }
 
+/**
+ * Wipes the account and everything linked to it. Safe to re-run: every step is a
+ * filter-based delete, so a retry (client or startup sweep) finishes a half-done run.
+ * Only child-safety (CSAM/CSAE) evidence survives, in a legal hold (see accountDeletion.rules).
+ */
 const deleteUserAccountFlow = async (userId) => {
     try {
         logger.info(`Starting deleteUserAccount proccess for user ${userId}`, { className: filename });
@@ -214,22 +229,114 @@ const deleteUserAccountFlow = async (userId) => {
 
         const userDB = await updateUserStatusDeleting(userIdObject);
         const chats = await findChats(userIdObject);
+        const legalHold = await createLegalHoldIfNeeded(userIdObject, userDB, chats);
 
+        await cancelPaidSubscriptions(userIdObject);
+        await deleteSubscriptions(userIdObject);
         await deleteDislikes(userIdObject);
         await deleteLikes(userIdObject);
+        await deleteQuickMessages(userIdObject);
         await deleteFCMTokens(userIdObject);
         await deleteReports(userIdObject);
+        await deleteCalls(userIdObject);
+        await deleteBlindDates(userIdObject);
         await deleteConversations(chats);
         await deleteChats(userIdObject);
         await deleteMatchs(userIdObject);
-        await deletePhotos(userDB);
+        // Photos under a legal hold stay in storage as evidence; the hold lists them.
+        if (!legalHold) await deletePhotos(userDB);
         await deleteRedisInfo(userId);
         await removeUserAccount(userIdObject);
         logger.info(`Finished successfully deleteUserAccount proccess for user ${userId}`, { className: filename });
     } catch (err) {
-        logger.error(`Error: need to re-execute the user delete manually for user ${userId}`, { className: filename });
-        logger.error(`Error in deleteUserAccount. Error: ${err}`, { className: filename });
+        logger.error(`Error in deleteUserAccount for user ${userId}, it will be retried. Error: ${err}`, { className: filename });
+        throw new BusinessException(c.CODE_INTERNAL_SERVER_ERROR, 500);
     }
+}
+
+/** Finishes deletions that were interrupted (crash, provider outage). Run at startup and periodically. */
+const resumePendingDeletions = async () => {
+    const pending = await User.find({ status: constants.STATUS_DESC_DELETING }, { _id: 1 }).lean();
+    for (const { _id } of pending) {
+        await deleteUserAccountFlow(String(_id)).catch(() => { /* logged, retried next sweep */ });
+    }
+}
+
+const createLegalHoldIfNeeded = async (userId, user, chats) => {
+    const reports = await ReportRepository.findByAnyFilter(DeletionRules.reportsOfUser(userId));
+    if (!DeletionRules.requiresLegalHold(reports, userId)) return null;
+
+    const existing = await LegalHold.findOne({ userId });
+    if (existing) return existing;
+
+    logger.warn(`User ${userId} has a child-safety report: keeping evidence in a legal hold`, { className: filename });
+    const messages = await Conversation.find({ chatId: { $in: chats.map(chat => chat._id) } }).lean();
+    return await LegalHold.create({
+        userId,
+        reason: DeletionRules.LEGAL_HOLD_REASON,
+        user: user ? (user.toObject ? user.toObject() : user) : null,
+        reports: reports.filter(report => report.reportReason === DeletionRules.CHILD_SAFETY_REASON).map(report => report.toObject ? report.toObject() : report),
+        messages,
+        photoBlobNames: DeletionRules.photoBlobNames(user)
+    });
+}
+
+/** Stops renewals at Google Play / dLocal Go and removes the Stripe customer (which cancels it there). */
+const cancelPaidSubscriptions = async (userId) => {
+    logger.info(`Cancelling paid subscriptions associated to the user`, { className: filename });
+    const subscriptions = await Subscription.find({ userId });
+    const stripeCustomers = new Set();
+
+    for (const subscription of subscriptions) {
+        if (subscription.provider === 'stripe') {
+            if (subscription.externalCustomerId) stripeCustomers.add(subscription.externalCustomerId);
+            continue;
+        }
+        if (!DeletionRules.needsProviderCancel(subscription)) continue;
+        // A provider outage must not delay the deletion: the failure is logged with
+        // the ids needed to cancel it by hand.
+        try {
+            if (subscription.provider === 'google_play') {
+                await googlePayClient.cancelSubscription(subscription.purchaseToken, subscription.subscriptionId, subscription.packageName);
+            } else if (subscription.provider === 'dlocalgo') {
+                await DlocalGo.deactivateSubscription(subscription.externalPlanId, subscription.subscriptionId);
+            }
+        } catch (err) {
+            logger.error(`MANUAL ACTION: cancel ${subscription.provider} subscription ${subscription.subscriptionId} (order ${subscription.orderId}, plan ${subscription.externalPlanId || subscription.packageName}) of deleted user ${userId}. Error: ${err}`, { className: filename });
+        }
+    }
+
+    for (const customerId of stripeCustomers) {
+        try {
+            await getStripe().customers.del(customerId);
+        } catch (err) {
+            // resource_missing: already deleted on a previous (interrupted) run.
+            if (err?.code !== 'resource_missing') logger.error(`MANUAL ACTION: delete Stripe customer ${customerId} of deleted user ${userId}. Error: ${err}`, { className: filename });
+        }
+    }
+}
+
+const getStripe = () => require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+const deleteSubscriptions = async (userId) => {
+    logger.info(`Deleting subscriptions associated to the user`, { className: filename });
+    await Subscription.deleteMany({ userId });
+}
+
+const deleteQuickMessages = async (userId) => {
+    logger.info(`Deleting quick messages associated to the user`, { className: filename });
+    await QuickMessage.deleteMany({ $or: [{ fromUserId: userId }, { toUserId: userId }] });
+}
+
+const deleteCalls = async (userId) => {
+    logger.info(`Deleting call history associated to the user`, { className: filename });
+    await Call.deleteMany({ $or: [{ caller: userId }, { callee: userId }] });
+}
+
+const deleteBlindDates = async (userId) => {
+    logger.info(`Deleting blind dates associated to the user`, { className: filename });
+    await BlindDate.deleteMany({ $or: [{ hostId: userId }, { guestId: userId }] });
+    await BlindDatePreference.deleteMany({ userId });
 }
 
 const updateUserStatusDeleting = async (userId) => {
@@ -274,14 +381,8 @@ const deleteFCMTokens = async (userId) => {
 
 const deleteReports = async (userId) => {
     logger.info(`Deleting reports associated to the user`, { className: filename });
-    const filter = {
-        $or: [
-            { reporterUserId: userId },
-            { reportedUserId: userId }
-        ]
-    };
-
-    await ReportRepository.deleteManyByFilter(filter);
+    // Child-safety (CSAM/CSAE) reports are kept by law to assist investigations.
+    await ReportRepository.deleteManyByFilter(DeletionRules.deletableReportsOfUser(userId));
 }
 
 const findChats = async (userId) => {
@@ -322,16 +423,7 @@ const deleteMatchs = async (userId) => {
 
 const deletePhotos = async (user) => {
     logger.info(`Deleting photos in Azure Blob Storage associated to the user`, { className: filename });
-    const blobNames = [];
-
-    for (const photo of user.photos) {
-        for (const size of photo.sizes) {
-            const blobName = photo.path + size.name;
-            blobNames.push(blobName);
-        }
-    }
-
-    await azureUploader.deleteBatch(blobNames);
+    await azureUploader.deleteBatch(DeletionRules.photoBlobNames(user));
 }
 
 const deleteRedisInfo = async (userId) => {
@@ -707,5 +799,6 @@ module.exports = {
     addImageUser,
     deleteImageUser,
     changePassword,
-    deleteUserAccount
+    deleteUserAccount,
+    resumePendingDeletions
 };

@@ -99,4 +99,14 @@ async function loginGoogle(req, socialToken) {
     }
 }
 
-module.exports = { verifySubscription, isActiveSubscription, isActiveSubscriptionV2, loginGoogle };
+/** Stops a Google Play subscription from renewing (the paid period is kept). Throws on failure. */
+async function cancelSubscription(purchaseToken, subscriptionId, packageName) {
+    const auth = new google.auth.GoogleAuth({
+        credentials: googleServiceAccount,
+        scopes: googleServiceScopes.split(',')
+    });
+    const playDeveloper = google.androidpublisher({ version: "v3", auth: await auth.getClient() });
+    await playDeveloper.purchases.subscriptions.cancel({ packageName, subscriptionId, token: purchaseToken });
+}
+
+module.exports = { verifySubscription, isActiveSubscription, isActiveSubscriptionV2, loginGoogle, cancelSubscription };
