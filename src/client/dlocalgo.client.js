@@ -52,6 +52,9 @@ const listExecutions = (planId, subscriptionId, page = 1, pageSize = 50, fetchIm
 const deactivateSubscription = (planId, subscriptionId, fetchImpl) =>
     request('PATCH', `/v1/subscription/plan/${encodeURIComponent(planId)}/subscription/${encodeURIComponent(subscriptionId)}/deactivate`, undefined, fetchImpl);
 
+/** PATCH /v1/subscription/plan/:planId (name, description, amount and the four URLs) */
+const updatePlan = (planId, changes, fetchImpl) => request('PATCH', `/v1/subscription/plan/${encodeURIComponent(planId)}`, changes, fetchImpl);
+
 /** POST /v1/subscription/plan (used by scripts/dlocalgo-setup-plans.js) */
 const createPlan = (plan, fetchImpl) => request('POST', '/v1/subscription/plan', plan, fetchImpl);
 
@@ -69,4 +72,4 @@ const isValidSignature = (authorizationHeader, rawBody) => {
     return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
 };
 
-module.exports = { getPlan, listPlanSubscriptions, listExecutions, deactivateSubscription, createPlan, isValidSignature, request, SANDBOX_URL };
+module.exports = { getPlan, updatePlan, listPlanSubscriptions, listExecutions, deactivateSubscription, createPlan, isValidSignature, request, SANDBOX_URL };

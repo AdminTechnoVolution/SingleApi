@@ -199,3 +199,31 @@ test('webhook bodies are only a hint: ids are extracted, nothing is trusted', ()
   assert.deepEqual(Service.pickIds({ subscription: { id: 6, subscription_token: 'tk' } }), { ids: ['6'], tokens: ['tk'] });
   assert.deepEqual(Service.pickIds({ payment_id: 'DP-1' }), { ids: [], tokens: [] });
 });
+
+test('a payment notification claims a CONFIRMED checkout whose buyer never returned to the PWA', async () => {
+  Service._resetPlanCache();
+  const externalId = Service.buildExternalId(USER, 'monthly');
+  const forged = Service.buildExternalId(USER, 'monthly').replace(/.{4}$/, '0000');
+  const saved = [];
+  const created = new Date().toISOString().slice(0, 19);
+  const restores = [
+    stub(UserRepository, 'findById', async id => ({ _id: id, email: 'ana@example.com' })),
+    stub(DlocalGo, 'listPlanSubscriptions', async planId => ({ total_pages: 1, data: planId === '12' ? [
+      { id: 30, status: 'CONFIRMED', active: true, created_at: created, scheduled_date: '2099-03-01T00:00:00', plan: { frequency_type: 'MONTHLY' } },
+      { id: 31, status: 'CONFIRMED', active: true, created_at: created, scheduled_date: '2099-03-01T00:00:00' },
+      { id: 32, status: 'CREATED', active: true, created_at: created }
+    ] : [] })),
+    stub(DlocalGo, 'listExecutions', async (planId, id) => ({ data: [{ status: 'COMPLETED', external_id: id === 30 ? externalId : forged, created_at: created }] })),
+    stub(Subscription, 'findOne', async () => null),
+    stub(Subscription, 'find', async () => []),
+    stub(Subscription, 'findOneAndUpdate', async (filter, update) => { saved.push({ filter, update }); return { _id: 'r', currentPeriodEnd: undefined }; }),
+    stub(Subscription, 'updateOne', async () => ({}))
+  ];
+  try {
+    await Service.processWebhook({ headers: {}, body: Buffer.from('{"payment_id":"DP-1"}') });
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].filter.externalSubscriptionId, 'dlocalgo:30');
+    assert.equal(saved[0].update.$set.userId, USER);
+    assert.equal(saved[0].update.$set.offerToken, 'monthly');
+  } finally { restores.forEach(r => r()); Service._resetPlanCache(); }
+});

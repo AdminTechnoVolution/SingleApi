@@ -203,7 +203,12 @@ const confirmCheckout = async (req) => {
     const { item } = found;
     // CREATED = the first payment is not done yet (async methods): keep polling.
     if (item.status !== 'CONFIRMED') return new BaseResponse(true, [], { status: 'pending' });
+    const record = await claimSubscription(userId, parsed.plan, planId, item);
+    return new BaseResponse(true, [], { status: record.status === 'active' ? 'active' : 'pending' });
+};
 
+/** Stores (or re-links) a confirmed dLocal Go subscription for the user that paid it. */
+const claimSubscription = async (userId, plan, planId, item, executions = []) => {
     const record = await Subscription.findOneAndUpdate(
         { externalSubscriptionId: externalSubscriptionId(item.id) },
         {
@@ -213,7 +218,7 @@ const confirmCheckout = async (req) => {
                 subscriptionId: String(item.id),
                 packageName: PROVIDER,
                 purchaseToken: externalSubscriptionId(item.id),
-                offerToken: parsed.plan,
+                offerToken: plan,
                 orderId: String(item.subscription_token || item.id),
                 externalSubscriptionId: externalSubscriptionId(item.id),
                 externalCustomerId: item.client_id != null ? String(item.client_id) : undefined,
@@ -224,8 +229,8 @@ const confirmCheckout = async (req) => {
         },
         { new: true, upsert: true, setDefaultsOnInsert: true }
     );
-    await applyRemoteState(record, item, []);
-    return new BaseResponse(true, [], { status: record.status === 'active' ? 'active' : 'pending' });
+    await applyRemoteState(record, item, executions);
+    return record;
 };
 
 // ───────── Sync (the API is the source of truth) ─────────
@@ -327,6 +332,46 @@ const pickIds = (body) => {
     return { ids: [...ids], tokens: [...tokens] };
 };
 
+/**
+ * Server-side fallback for checkouts whose buyer never came back to the PWA: recent
+ * CONFIRMED subscriptions not stored yet are claimed through the signed external_id
+ * that the first execution carries (only our own HMAC-signed ids are accepted).
+ */
+const CLAIM_INTERVAL_MS = 30 * 1000;
+let lastClaimRun = 0;
+const claimRecentCheckouts = async (now = new Date()) => {
+    if (now.getTime() - lastClaimRun < CLAIM_INTERVAL_MS) return 0;
+    lastClaimRun = now.getTime();
+    let claimed = 0;
+    for (const plan of Object.keys(PLAN_VARIABLES)) {
+        let planId;
+        try { planId = getPlanId(plan); } catch { continue; }
+        for (let page = 1; page <= 2; page++) {
+            const result = await DlocalGo.listPlanSubscriptions(planId, page, 50).catch(() => null);
+            const items = Array.isArray(result?.data) ? result.data : [];
+            for (const item of items) {
+                if (item?.id == null || item.active === false || item.status !== 'CONFIRMED') continue;
+                const createdAt = parseDate(item.created_at);
+                if (createdAt && now.getTime() - createdAt.getTime() > CHECKOUT_TTL_MS * 2) continue;
+                const existing = await Subscription.findOne({ externalSubscriptionId: externalSubscriptionId(item.id) });
+                if (existing?.userId) continue;
+                const list = await DlocalGo.listExecutions(planId, item.id, 1, 10).catch(() => null);
+                const executions = Array.isArray(list?.data) ? list.data : [];
+                // The signed id is checked against the subscription's creation, so late retries still claim it.
+                const owner = executions.map(execution => parseExternalId(execution?.external_id, createdAt ? createdAt.getTime() : now.getTime())).find(parsed => parsed && parsed.plan === plan);
+                if (!owner) continue;
+                const user = await UserRepository.findById(owner.userId).catch(() => null);
+                if (!user) continue;
+                await claimSubscription(owner.userId, plan, planId, item, executions);
+                claimed++;
+                logger.info(`dLocal Go subscription ${item.id} claimed for ${owner.userId} from a notification`, { className: filename });
+            }
+            if (!items.length || page >= (Number(result?.total_pages) || 1)) break;
+        }
+    }
+    return claimed;
+};
+
 const processWebhook = async (req, now = new Date()) => {
     const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '');
     let verified = false;
@@ -335,6 +380,8 @@ const processWebhook = async (req, now = new Date()) => {
     logger.info(`dLocal Go notification (signature ${verified ? 'valid' : 'missing/invalid'}): ${raw.slice(0, 1000)}`, { className: filename });
     let body;
     try { body = JSON.parse(raw); } catch { return; }
+    // dLocal Go notifications only carry {"payment_id"}: pick up checkouts nobody confirmed yet.
+    await claimRecentCheckouts(now).catch(err => logger.error(`dLocal Go claim failed: ${err}`, { className: filename }));
     const { ids, tokens } = pickIds(body);
     if (!ids.length && !tokens.length) return;
     const records = await Subscription.find({
@@ -346,8 +393,8 @@ const processWebhook = async (req, now = new Date()) => {
 };
 
 module.exports = {
-    PLAN_VARIABLES, getPlanId, planNameForId, getPlans, createCheckout, confirmCheckout, cancel, refreshIfDue, processWebhook, sync,
+    PLAN_VARIABLES, getPlanId, planNameForId, getPlans, createCheckout, confirmCheckout, cancel, refreshIfDue, processWebhook, sync, claimRecentCheckouts,
     // exported for tests
     buildExternalId, parseExternalId, parseDate, addPeriod, minorUnits, applyRemoteState, pickIds,
-    _resetPlanCache: () => { planCache = { at: 0, plans: null }; }
+    _resetPlanCache: () => { planCache = { at: 0, plans: null }; lastClaimRun = 0; }
 };
