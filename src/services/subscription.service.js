@@ -145,6 +145,8 @@ const processStripeWebhook = async (req) => {
     const item = event.data.object;
     const userId = item.metadata?.userId;
     if (!userId) return;
+    // Deleting an account removes its Stripe customer, whose webhooks must not recreate data.
+    if (!await UserRepository.findById(userId)) return;
     const currentPeriodStart = stripePeriodDate(item, 'current_period_start');
     const currentPeriodEnd = stripePeriodDate(item, 'current_period_end');
     await SubscriptionRepository.findOneAndUpdate(

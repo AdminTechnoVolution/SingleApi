@@ -4,6 +4,7 @@ const Subscription = require('../src/models/subscription.model');
 const { stripeCheckoutSchema } = require('../src/validators/subscription.validator');
 const SubscriptionService = require('../src/services/subscription.service');
 const SubscriptionRepository = require('../src/repository/subscription.repository');
+const UserRepository = require('../src/repository/user.repository');
 
 test('preserves required Google Play subscription fields', () => {
   for (const path of ['subscriptionId', 'packageName', 'purchaseToken', 'offerToken', 'orderId']) {
@@ -70,6 +71,7 @@ test('persists item-level Stripe billing periods from subscription webhooks', as
   const stripeModuleCache = require.cache[require.resolve('stripe')];
   const originalStripeExport = stripeModuleCache.exports;
   const originalRepositoryUpdate = SubscriptionRepository.findOneAndUpdate;
+  const originalFindUser = UserRepository.findById;
   const originalSecretKey = process.env.STRIPE_SECRET_KEY;
   const originalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const start = 1_765_000_000;
@@ -90,6 +92,7 @@ test('persists item-level Stripe billing periods from subscription webhooks', as
   SubscriptionRepository.findOneAndUpdate = async (filter, value) => {
     update = { filter, value };
   };
+  UserRepository.findById = async (id) => ({ _id: id });
   process.env.STRIPE_SECRET_KEY = 'sk_test_subscription_contract';
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_subscription_contract';
 
@@ -98,6 +101,7 @@ test('persists item-level Stripe billing periods from subscription webhooks', as
   } finally {
     stripeModuleCache.exports = originalStripeExport;
     SubscriptionRepository.findOneAndUpdate = originalRepositoryUpdate;
+    UserRepository.findById = originalFindUser;
     if (originalSecretKey === undefined) delete process.env.STRIPE_SECRET_KEY;
     else process.env.STRIPE_SECRET_KEY = originalSecretKey;
     if (originalWebhookSecret === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
@@ -107,4 +111,34 @@ test('persists item-level Stripe billing periods from subscription webhooks', as
   assert.equal(update.filter.externalSubscriptionId, 'sub_test');
   assert.deepEqual(update.value.$set.currentPeriodStart, new Date(start * 1000));
   assert.deepEqual(update.value.$set.currentPeriodEnd, new Date(end * 1000));
+});
+
+test('Stripe webhook for a deleted account does not recreate its subscription', async () => {
+  require('stripe');
+  const stripeModuleCache = require.cache[require.resolve('stripe')];
+  const originalStripeExport = stripeModuleCache.exports;
+  const originalRepositoryUpdate = SubscriptionRepository.findOneAndUpdate;
+  const originalFindUser = UserRepository.findById;
+  const originalSecretKey = process.env.STRIPE_SECRET_KEY;
+  let updated = false;
+  const subscription = { id: 'sub_gone', customer: 'cus_gone', status: 'canceled', metadata: { userId: '507f1f77bcf86cd799439012' } };
+
+  stripeModuleCache.exports = () => ({
+    webhooks: { constructEvent: () => ({ type: 'customer.subscription.deleted', data: { object: subscription } }) }
+  });
+  SubscriptionRepository.findOneAndUpdate = async () => { updated = true; };
+  UserRepository.findById = async () => null;
+  process.env.STRIPE_SECRET_KEY = 'sk_test_deleted_account';
+
+  try {
+    await SubscriptionService.processStripeWebhook({ body: Buffer.from('{}'), headers: { 'stripe-signature': 'test' } });
+  } finally {
+    stripeModuleCache.exports = originalStripeExport;
+    SubscriptionRepository.findOneAndUpdate = originalRepositoryUpdate;
+    UserRepository.findById = originalFindUser;
+    if (originalSecretKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = originalSecretKey;
+  }
+
+  assert.equal(updated, false);
 });

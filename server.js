@@ -107,3 +107,10 @@ server.listen(PORT, () => {
     mongoose.connectWithRetry();
     redisClient.connect();
 });
+
+// Finishes account deletions interrupted by a crash or an outage (they are otherwise immediate).
+const UserService = require('./src/services/user.service');
+const resumePendingDeletions = () => UserService.resumePendingDeletions()
+    .catch(err => logger.error(`Resuming pending account deletions failed: ${err}`, { className: filename }));
+require('mongoose').connection.once('open', resumePendingDeletions);
+setInterval(resumePendingDeletions, 10 * 60 * 1000).unref();
