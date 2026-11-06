@@ -11,6 +11,10 @@
  * Optional: DLOCALGO_COUNTRY (ISO alpha-2). Without it the buyer picks the country
  * at checkout, and dLocal Go then requires the currency to be USD.
  * Run once per environment (sandbox and production have separate keys and plans).
+ *
+ * DLOCALGO_PWA_URL must be the PWA origin (e.g. https://www.single-app.com):
+ * the buyer is sent back to its root, where the app confirms ?external_id=.
+ * `--update` instead PATCHes the existing DLOCALGO_PLAN_*_ID plans with these URLs.
  */
 require('dotenv').config();
 const DlocalGo = require('../src/client/dlocalgo.client');
@@ -22,8 +26,17 @@ const required = (name) => {
 };
 
 const main = async () => {
-    const pwaUrl = required('DLOCALGO_PWA_URL').replace(/\/+$/, '');
+    const pwaUrl = new URL(required('DLOCALGO_PWA_URL')).origin;
     const notificationUrl = required('DLOCALGO_NOTIFICATION_URL');
+    const urls = { notification_url: notificationUrl, success_url: `${pwaUrl}/`, back_url: `${pwaUrl}/`, error_url: `${pwaUrl}/` };
+    if (process.argv.includes('--update')) {
+        for (const key of ['WEEKLY', 'MONTHLY', 'QUARTERLY']) {
+            const id = required(`DLOCALGO_PLAN_${key}_ID`);
+            const updated = await DlocalGo.updatePlan(id, urls);
+            console.log(`${key} (${id}): success_url=${updated?.success_url} notification_url=${updated?.notification_url}`);
+        }
+        return;
+    }
     const currency = (process.env.DLOCALGO_CURRENCY || 'USD').toUpperCase();
     const country = process.env.DLOCALGO_COUNTRY || undefined;
     if (!country && currency !== 'USD') { console.error('Without DLOCALGO_COUNTRY the currency must be USD'); process.exit(1); }
@@ -44,11 +57,8 @@ const main = async () => {
             amount: plan.amount,
             frequency_type: plan.frequency_type,
             frequency_value: plan.frequency_value,
-            notification_url: notificationUrl,
             // dLocal Go appends ?external_id=... to success_url; the PWA confirms it.
-            success_url: `${pwaUrl}/`,
-            back_url: `${pwaUrl}/`,
-            error_url: `${pwaUrl}/`
+            ...urls
         });
         console.log(`${plan.name}: id=${created.id} subscribe_url=${created.subscribe_url}`);
         lines.push(`DLOCALGO_PLAN_${plan.key}_ID=${created.id}`);
