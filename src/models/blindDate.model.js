@@ -14,7 +14,12 @@ const conditionsSchema = new Schema({
   ageMax: { type: Number, min: 18, max: 99 },
   languages: [{ type: String, ref: 'Language' }],
   musicGenres: [{ type: String, ref: 'MusicGenre' }],
-  lookingFor: [{ type: String, ref: 'LookingFor' }]
+  lookingFor: [{ type: String, ref: 'LookingFor' }],
+  // Kultura: 'language_exchange' voice rooms ("Salas"). Absent = legacy blind date (dating).
+  intent: { type: String, enum: ['dating', 'language_exchange'] },
+  // Room language (Language id) and free-text topic (Kultura rooms).
+  language: { type: String, ref: 'Language' },
+  topic: { type: String, maxlength: 80 }
 }, { _id: false });
 
 const blindDateSchema = new Schema({
@@ -41,6 +46,7 @@ const blindDateSchema = new Schema({
 }, { versionKey: false });
 
 blindDateSchema.index({ status: 1, created_at: -1 });
+blindDateSchema.index({ status: 1, 'conditions.intent': 1, created_at: -1 });
 // One live room per host at a time.
 blindDateSchema.index({ hostId: 1 }, { unique: true, partialFilterExpression: { status: { $in: ['open', 'matched', 'in_call'] } } });
 blindDateSchema.index({ guestId: 1, status: 1 });

@@ -20,6 +20,7 @@ const PremiumService = require('./premium.service');
 const ConfigService = require('./config.service');
 const LikesService = require('./likes.service');
 const Rules = require('./blindDate.rules');
+const Intents = require('../../shared/util/intents');
 
 const NAMESPACE = '/ws/blind-dates';
 const DEFAULT_ROOMS_PER_DAY = 10;
@@ -138,9 +139,27 @@ const participantView = async (room, userId) => {
     };
 };
 
+/**
+ * Kultura room intent requested by the client: explicit (body/query), iOS default
+ * language_exchange, or null for legacy clients (= dating blind dates, unchanged).
+ * 'friends' is not a room kind: it is treated as language_exchange.
+ */
+const requestedRoomIntent = (explicit, headers) => {
+    const { intent, invalid } = Intents.resolveRequestedIntent(explicit, headers);
+    if (invalid) throw new BusinessException(c.CODE_INTENT_INVALID);
+    if (intent === 'friends') return 'language_exchange';
+    return intent;
+};
+
+const isOpenToDating = async (userId) =>
+    (await UserRepository.findById(userId, 'profileConfig.openToDating'))?.profileConfig?.openToDating === true;
+
 const createRoom = async (req) => {
     const userId = userIdFrom(req);
     await requirePremium(userId);
+    const intent = requestedRoomIntent(req.body?.conditions?.intent, req.headers);
+    if (intent === 'dating' && !(await isOpenToDating(userId))) throw new BusinessException(c.CODE_ERROR_OPEN_TO_DATING_REQUIRED);
+    const conditions = intent ? { ...(req.body?.conditions || {}), intent } : req.body?.conditions;
     await closeStaleRooms(userId);
     if (await liveRoomOf(userId)) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_BUSY);
 
@@ -160,7 +179,7 @@ const createRoom = async (req) => {
             hostName: host.userInfo.fullName,
             hostGender: host.userInfo.gender,
             hostAge: Rules.ageFrom(host.userInfo.birthdate, now) ?? undefined,
-            conditions: Rules.normalizeConditions(req.body?.conditions),
+            conditions: Rules.normalizeConditions(conditions),
             expires_at: new Date(now.getTime() + Rules.ROOM_RETENTION_MS)
         });
         logger.info(`Blind date room created: ${room._id} by ${userId}`, { className: filename, req });
@@ -186,9 +205,13 @@ const withHostAges = async (rooms, now = new Date()) => {
 const listRooms = async (req) => {
     const userId = userIdFrom(req);
     await requirePremium(userId);
-    const me = await UserRepository.findById(userId, 'userInfo preferences musicPreferences');
+    const intent = requestedRoomIntent(req.query?.intent, req.headers);
+    const me = await UserRepository.findById(userId, 'userInfo preferences musicPreferences profileConfig');
     if (!me) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
-    const filter = Rules.buildOpenRoomsFilter(me, await excludedPeople(userId));
+    // New clients only see dating rooms with "Open to something more" on.
+    if (intent === 'dating' && me.profileConfig?.openToDating !== true) return new BaseResponse(true, [], { results: [] });
+    const language = typeof req.query?.language === 'string' && req.query.language.trim() ? req.query.language.trim().slice(0, 64) : null;
+    const filter = Rules.buildOpenRoomsFilter(me, await excludedPeople(userId), new Date(), { intent, language });
     const rooms = await withHostAges(await BlindDate.find(filter).sort({ created_at: -1 }).limit(50).lean());
     return new BaseResponse(true, [], { results: rooms.map(Rules.toPublicRoom) });
 };
@@ -223,7 +246,7 @@ const joinRoom = async (req) => {
         if (!room) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_NOT_FOUND);
         if (room.status !== 'open' || room.guestId) throw new BusinessException(c.CODE_ERROR_BLIND_DATE_TAKEN);
 
-        const me = await UserRepository.findById(userId, 'userInfo preferences musicPreferences');
+        const me = await UserRepository.findById(userId, 'userInfo preferences musicPreferences profileConfig');
         const excluded = (await excludedPeople(userId)).map(String);
         if (!me || excluded.includes(String(room.hostId)) || !Rules.isCompatible(room, me)) {
             throw new BusinessException(c.CODE_ERROR_BLIND_DATE_NOT_COMPATIBLE);
@@ -370,7 +393,9 @@ const matchIntent = async (req) => {
     let chatId = existing?._id || null;
     if (!existing) {
         // Pushes newMatch to the other participant, like a regular reciprocal like.
-        const data = await LikesService.matchTasks(String(userId), { toUserId: otherId }, { isMatch: true });
+        // Kultura rooms create a connection with the room intent; legacy rooms keep a legacy match.
+        const intent = updated.conditions?.intent;
+        const data = await LikesService.matchTasks(String(userId), { toUserId: otherId, ...(intent ? { intent } : {}) }, { isMatch: true });
         chatId = data.chatId;
     }
     const finished = await BlindDate.findOneAndUpdate({ _id: roomId }, { $set: { matchState: 'done', chatId } }, { new: true });

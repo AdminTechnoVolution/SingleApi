@@ -10,7 +10,11 @@ const blindDatePreferenceSchema = new Schema({
         ageMax: { type: Number, default: 99 },
         languages: { type: [String], default: [] },
         musicGenres: { type: [String], default: [] },
-        lookingFor: { type: [String], default: [] }
+        lookingFor: { type: [String], default: [] },
+        // Kultura (absent = legacy blind date)
+        intent: { type: String },
+        language: { type: String },
+        topic: { type: String }
     },
     updated_at: { type: Date, default: Date.now }
 }, { versionKey: false });
