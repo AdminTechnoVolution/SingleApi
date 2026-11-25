@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { subscriptionSchema, stripeCheckoutSchema, dlocalGoCheckoutSchema, dlocalGoConfirmSchema } = require('../validators/subscription.validator');
+const { subscriptionSchema, stripeCheckoutSchema, dlocalGoCheckoutSchema, dlocalGoConfirmSchema, appleVerifySchema } = require('../validators/subscription.validator');
 const validateBody = require('../../shared/middlewares/validateBody');
 const validateToken = require('../../shared/middlewares/validateToken');
 const SubscriptionController = require('../controllers/subscription.controller');
@@ -84,5 +84,53 @@ router.get('/dlocalgo/plans', validateToken, SubscriptionController.getDlocalGoP
 router.post('/dlocalgo/checkout', validateToken, validateBody(dlocalGoCheckoutSchema), SubscriptionController.createDlocalGoCheckout);
 router.post('/dlocalgo/confirm', validateToken, validateBody(dlocalGoConfirmSchema), SubscriptionController.confirmDlocalGoCheckout);
 router.post('/dlocalgo/cancel', validateToken, SubscriptionController.cancelDlocalGoSubscription);
+
+/**
+ * @swagger
+ * /api/subscription/apple/verify:
+ *   post:
+ *     summary: Verify a StoreKit 2 signed transaction (JWS) and activate Premium (provider app_store)
+ *     tags:
+ *       - Subscription
+ *     security:
+ *       - Bearer: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [signedTransaction]
+ *             properties:
+ *               signedTransaction:
+ *                 type: string
+ *                 description: Transaction.jwsRepresentation
+ *     responses:
+ *       200:
+ *         description: Entitlement { premium, provider, plan, productId, status, expiresAt, renewsAt, cancelAtPeriodEnd, originalTransactionId, environment }
+ *       400:
+ *         description: ERROR_APPLE_TRANSACTION_INVALID | ERROR_APPLE_PRODUCT_UNKNOWN
+ *       409:
+ *         description: ERROR_APPLE_TRANSACTION_OWNED
+ * /api/subscription/apple/notifications:
+ *   post:
+ *     summary: App Store Server Notifications v2 endpoint (called by Apple)
+ *     tags:
+ *       - Subscription
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               signedPayload:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Received
+ */
+router.post('/apple/verify', validateToken, validateBody(appleVerifySchema), SubscriptionController.verifyAppleTransaction);
+router.post('/apple/notifications', SubscriptionController.appleNotification);
 
 module.exports = router;

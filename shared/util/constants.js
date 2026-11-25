@@ -5,7 +5,7 @@ module.exports = {
     HTTP_INTERNAL_SERVER: 500,
     MAX_CHARS_LOG_PER_STRING: 256,
     HEADER_CORRELATION_ID: "x-correlation-id",
-    SENSITIVE_KEYS: ['password', 'token', 'accesstoken', 'socialtoken', 'refreshtoken', 'authorization', 'purchasetoken', 'offertoken', 'verificationcode', 'fcmtoken'],
+    SENSITIVE_KEYS: ['password', 'token', 'accesstoken', 'socialtoken', 'refreshtoken', 'authorization', 'purchasetoken', 'offertoken', 'verificationcode', 'fcmtoken', 'signedtransaction', 'signedpayload'],
     MASK_SENSITIVE_KEYS: '**********',
     MASK_VALUE_UNDEFINED_EMPTY: '***UNDEFINED OR EMPTY***',
     BASIC_PLAN_LIKES_PER_DAY: "BASIC_PLAN_LIKES_PER_DAY",

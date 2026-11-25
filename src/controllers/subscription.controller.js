@@ -2,6 +2,7 @@ const c = require('../../shared/util/constants');
 const BusinessException = require('../../shared/exceptionHandler/BusinessException');
 const SubscriptionService = require('../services/subscription.service');
 const DlocalGoService = require('../services/dlocalgo.service');
+const AppStoreService = require('../services/appStore.service');
 
 const createSubscription = async (req, res, next) => {
   try {
@@ -58,7 +59,18 @@ const dlocalGoWebhook = async (req, res) => {
   res.status(200).json({ received: true });
 };
 
+const verifyAppleTransaction = handle(req => AppStoreService.verifyPurchase(req));
+
+/** 200 once the signed payload is valid (Apple retries anything else); 400 when it is not. */
+const appleNotification = async (req, res, next) => {
+  try {
+    await AppStoreService.processNotification(req);
+    res.status(200).json({ received: true });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
+  verifyAppleTransaction, appleNotification,
   createSubscription, getEntitlement, getStripePlans, createCheckoutSession, createPortalSession, stripeWebhook,
   getDlocalGoPlans, createDlocalGoCheckout, confirmDlocalGoCheckout, cancelDlocalGoSubscription, dlocalGoWebhook
 };
