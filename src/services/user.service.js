@@ -871,6 +871,9 @@ async function verifySocialToken(body, req) {
 
     if (authMethod === AuthType.GOOGLE) {
         socialResponse = await googleClient.loginGoogle(req, socialToken);
+    } else if (authMethod === AuthType.APPLE) {
+        // Apple shares the user's name only once, with the app: the app sends it as userInfo.fullName.
+        socialResponse = await require('../client/apple.client').verifyIdentityToken(socialToken);
     } else {
         throw new ClientException(c.CODE_ERROR_SERVICE_UNAVAILABLE, 503);
     }

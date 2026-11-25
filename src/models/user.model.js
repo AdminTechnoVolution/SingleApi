@@ -114,6 +114,7 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ "email": 1 }, { unique: true });
 userSchema.index({ "platform": 1 });
+userSchema.index({ "auth.method": 1, "auth.socialId": 1 });
 userSchema.index({ "userInfo.gender": 1 });
 userSchema.index({ "userInfo.birthdate": 1 });
 userSchema.index({ "userInfo.sexualOrientation": 1 });
