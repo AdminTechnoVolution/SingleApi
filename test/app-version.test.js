@@ -59,3 +59,16 @@ test('the new PWA (web ≥ 200) gets explicit dislikes and quick messages; old P
     assert.strictEqual(supportsQuickMessages({ platform: 'web', appVersionCode: 200 }, 107), false); // number = Android only
     assert.strictEqual(supportsQuickMessages(null, { android: 107, web: 200 }), false);
 });
+
+test('iOS (Kultura) gets its own version policy from IOS_* configs, same shape as Android', () => {
+  const iosConfigs = [...configs, { key: 'IOS_MIN_VERSION_CODE', value: 12 }, { key: 'IOS_LATEST_VERSION_CODE', value: '15' }];
+  const ios = parseClientVersion({ 'x-app-version': '11', 'x-app-platform': 'ios' });
+  assert.deepEqual(ios, { versionCode: 11, platform: 'ios' });
+  const forced = buildVersionPolicy(iosConfigs, ios);
+  assert.deepEqual(forced, { platform: 'ios', minVersionCode: 12, latestVersionCode: 15, updateRequired: true, updateAvailable: true });
+  assert.deepEqual(Object.keys(forced), Object.keys(buildVersionPolicy(iosConfigs, { versionCode: 107, platform: 'android' })));
+  assert.equal(buildVersionPolicy(iosConfigs, { versionCode: 13, platform: 'ios' }).updateRequired, false);
+  assert.equal(buildVersionPolicy(iosConfigs, { versionCode: 15, platform: 'ios' }).updateAvailable, false);
+  // Android thresholds never apply to iOS builds.
+  assert.equal(buildVersionPolicy(configs, { versionCode: 1, platform: 'ios' }).updateRequired, false);
+});

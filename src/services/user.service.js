@@ -30,6 +30,7 @@ const zodiacSignService = require('../services/zodiacSign.service');
 const interestService = require('../services/interest.service');
 const Intents = require('../../shared/util/intents');
 const Intent = require('../enums/EnumIntent');
+const { buildRegisterUserInfo, buildRegisterPreferences, buildRegisterProfileConfig } = require('./userRegistration.rules');
 const util = require('../../shared/util/util');
 const utilNudity = require('../../shared/util/util.nudity');
 const jwtUtil = require('../../shared/util/jwt');
@@ -59,7 +60,7 @@ const azureUploader = new AzureUploader(process.env.S3_CONNECTION_STRING, proces
 const getUserById = async (req) => {
     const { userId } = req.params;
 
-    const pipeline = await createPipeline(userId);
+    const pipeline = await createPipeline(userId, { forOthers: true });
     let user = await UserRepository.findByPipeline(pipeline, true);
     if (!user || (Array.isArray(user) && user.length === 0)) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
 
@@ -170,49 +171,6 @@ const registerUser = async (req) => {
 
     message = c.CODE_SUCCESS_REGISTER_USER
     return new BaseResponse(true, [message]);
-};
-
-/** Only the fields each register step may set (new Kultura fields are optional). */
-const buildRegisterUserInfo = (userInfo = {}) => {
-    const info = {
-        fullName: userInfo.fullName,
-        birthdate: userInfo.birthdate,
-        gender: userInfo.gender,
-        sexualOrientation: userInfo.sexualOrientation,
-    };
-    if (userInfo.languages) info.languages = userInfo.languages;
-    if (userInfo.learningLanguages) info.learningLanguages = userInfo.learningLanguages;
-    if (userInfo.interests) info.interests = userInfo.interests;
-    return info;
-};
-
-/** Legacy clients (no intents) get the intents the backfill would give them. */
-const buildRegisterPreferences = (preferences = {}) => ({
-    preferences: preferences.preferences || [],
-    lookingFor: preferences.lookingFor,
-    intents: preferences.intents ? Intents.normalizeIntents(preferences.intents) : Intents.legacyIntentsFor(preferences.lookingFor)
-});
-
-/**
- * openToDating: explicit value from the client, else (legacy) true when the user has a dating profile.
- * New clients that send intents without 'dating' start with it off.
- */
-const buildRegisterProfileConfig = (body) => {
-    const profileConfig = { ...(body.profileConfig || {}) };
-    const intents = body.preferences?.intents;
-    // Multipart bodies carry booleans as strings.
-    if (profileConfig.openToDating === 'true' || profileConfig.openToDating === 'false') {
-        profileConfig.openToDating = profileConfig.openToDating === 'true';
-    }
-    if (typeof profileConfig.openToDating === 'boolean') {
-        profileConfig.openToDatingUpdatedAt = new Date();
-    } else if (intents) {
-        profileConfig.openToDating = Intents.normalizeIntents(intents).includes(Intent.DATING);
-        profileConfig.openToDatingUpdatedAt = new Date();
-    } else {
-        profileConfig.openToDating = Intents.legacyIntentsFor(body.preferences?.lookingFor).includes(Intent.DATING);
-    }
-    return profileConfig;
 };
 
 /**
@@ -814,7 +772,7 @@ const validateKulturaFields = async (userInfo) => {
     }
 };
 
-const createPipeline = async (id) => {
+const createPipeline = async (id, { forOthers = false } = {}) => {
     const pipeline = [];
 
     const matchStage = {
@@ -862,6 +820,9 @@ const createPipeline = async (id) => {
         }
     });
 
+    // Someone else's profile: never reveal whether they are open to dating.
+    if (forOthers) pipeline.push(...require('../../shared/util/profilePrivacy').hideDatingSignalsStages());
+
     return pipeline;
 };
 
@@ -888,11 +849,6 @@ async function verifySocialToken(body, req) {
 }
 
 module.exports = {
-    buildRegisterUserInfo,
-    buildRegisterPreferences,
-    buildRegisterProfileConfig,
-    validateUserInput,
-    validateDatingProfileOnUpdate,
     registerUser,
     getUserMe,
     getUserById,

@@ -8,6 +8,7 @@ const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
 const DiscoverOrder = require('../../shared/util/discoverOrder');
+const { hideDatingSignalsStages } = require('../../shared/util/profilePrivacy');
 const Intents = require('../../shared/util/intents');
 const Intent = require('../enums/EnumIntent');
 const limitGetUsersDiscover = Number(process.env.LIMIT_GET_USERS_DISCOVER);
@@ -349,6 +350,9 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
             'lastActivityAt': 0
         }
     });
+
+    // Kultura: never reveal whether a candidate is open to dating.
+    pipeline.push(...hideDatingSignalsStages());
 
     return pipeline;
 };
