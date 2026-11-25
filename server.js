@@ -29,6 +29,7 @@ const blindDateRoutes = require('./src/routes/blindDate.route');
 const callRoutes = require('./src/routes/call.route');
 const reportRoutes = require('./src/routes/report.route');
 const lookingForRoutes = require('./src/routes/lookingFor.route');
+const interestRoutes = require('./src/routes/interest.route');
 const sexualOrientationRoutes = require('./src/routes/sexualOrientation.route');
 const smokingHabitRoutes = require('./src/routes/smokingHabit.route');
 const subscriptionRoutes = require('./src/routes/subscription.route')
@@ -79,6 +80,7 @@ app.use('/api/master', familyPlanRoutes);
 app.use('/api/master', genderRoutes);
 app.use('/api/master', languageRoutes);
 app.use('/api/master', lookingForRoutes);
+app.use('/api/master', interestRoutes);
 app.use('/api/master', reportReasonRoutes);
 app.use('/api/master', sexualOrientationRoutes);
 app.use('/api/master', smokingHabitRoutes);

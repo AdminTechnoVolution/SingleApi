@@ -2,6 +2,7 @@ const Joi = require('joi');
 const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const AuthType = require('../enums/EnumAuthType');
+const Intent = require('../enums/EnumIntent');
 
 /**
  * @swagger
@@ -54,6 +55,10 @@ const AuthType = require('../enums/EnumAuthType');
  *           type: string
  *           example: KM
  *           description: Unit for distance measurement
+ *         openToDating:
+ *           type: boolean
+ *           example: false
+ *           description: Kultura "Open to something more" (dating features). Default false.
  *         ageRange:
  *           type: object
  *           properties:
@@ -175,10 +180,14 @@ const AuthType = require('../enums/EnumAuthType');
  *
  *     Preferences:
  *       type: object
- *       required:
- *         - preferences
- *         - lookingFor
+ *       description: preferences and lookingFor are required only when intents is absent (legacy) or includes 'dating'.
  *       properties:
+ *         intents:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [friends, language_exchange, dating]
+ *           example: ["language_exchange", "friends"]
  *         preferences:
  *           type: array
  *           items:
@@ -290,6 +299,32 @@ const AuthType = require('../enums/EnumAuthType');
  *           format: password
  *           example: StrongPassword123
  */
+const intentsJoi = Joi.array().items(Joi.string().valid(...Object.values(Intent))).min(1).unique()
+    .messages({
+        'any.only': c.CODE_INTENTS_INVALID,
+        'array.min': c.CODE_INTENTS_REQUIRED,
+        'array.unique': c.CODE_INTENTS_DUPLICATES
+    });
+
+const learningLanguagesJoi = Joi.array().items(Joi.string()).unique().optional()
+    .messages({ 'array.unique': c.CODE_LEARNING_LANGUAGES_DUPLICATES });
+
+const interestsJoi = Joi.array().items(Joi.string()).unique().max(30).optional()
+    .messages({ 'array.unique': c.CODE_INTERESTS_DUPLICATES });
+
+const includesDating = Joi.array().has(Joi.string().valid(Intent.DATING));
+
+/**
+ * Dating fields (sexualOrientation, preferences.preferences, lookingFor) are required
+ * only for dating profiles: intents absent (legacy clients, e.g. Android) or including 'dating'.
+ * `intentsRef`: path of preferences.intents relative to the field ('/' = from the root).
+ */
+const requiredForDating = (schema, intentsRef) => Joi.when(intentsRef, {
+    not: Joi.exist(),
+    then: schema.required(),
+    otherwise: Joi.when(intentsRef, { is: includesDating, then: schema.required(), otherwise: schema.optional() })
+});
+
 const locationJoi = Joi.object({
     coordinates: Joi.array().items(Joi.number()).length(2).required()
         .messages({
@@ -349,6 +384,8 @@ const userInfoUpdateJoi = Joi.object({
             'string.empty': c.CODE_LANGUAGES_REQUIRED,
             'array.unique': c.CODE_LANGUAGES_DUPLICATES
         }),
+    learningLanguages: learningLanguagesJoi,
+    interests: interestsJoi,
 });
 
 const preferencesUpdateJoi = Joi.object({
@@ -360,7 +397,8 @@ const preferencesUpdateJoi = Joi.object({
     lookingFor: Joi.string().optional()
         .messages({
             'string.empty': c.CODE_LOOKING_FOR_REQUIRED
-        })
+        }),
+    intents: intentsJoi.optional()
 });
 
 const userInfoJoi = Joi.object({
@@ -381,25 +419,34 @@ const userInfoJoi = Joi.object({
             'any.required': c.CODE_GENDER_REQUIRED,
             'string.empty': c.CODE_GENDER_REQUIRED
         }),
-    sexualOrientation: Joi.string().required()
+    sexualOrientation: requiredForDating(Joi.string(), '/preferences.intents')
         .messages({
             'any.required': c.CODE_SEXUAL_ORIENTATION_REQUIRED,
             'string.empty': c.CODE_SEXUAL_ORIENTATION_REQUIRED
-        })
+        }),
+    // Kultura (optional, also accepted from legacy clients).
+    languages: Joi.array().items(Joi.string()).unique().optional()
+        .messages({
+            'string.empty': c.CODE_LANGUAGES_REQUIRED,
+            'array.unique': c.CODE_LANGUAGES_DUPLICATES
+        }),
+    learningLanguages: learningLanguagesJoi,
+    interests: interestsJoi
 });
 
 const preferencesJoi = Joi.object({
-    preferences: Joi.array().items(Joi.string()).unique().required()
+    preferences: requiredForDating(Joi.array().items(Joi.string()).unique(), 'intents')
         .messages({
             'any.required': c.CODE_PREFERENCES_REQUIRED,
             'string.empty': c.CODE_PREFERENCES_REQUIRED,
             'array.unique': c.CODE_PREFERENCE_DUPLICATES
         }),
-    lookingFor: Joi.string().required()
+    lookingFor: requiredForDating(Joi.string(), 'intents')
         .messages({
             'any.required': c.CODE_LOOKING_FOR_REQUIRED,
             'string.empty': c.CODE_LOOKING_FOR_REQUIRED
-        })
+        }),
+    intents: intentsJoi.optional()
 });
 
 const profileConfigJoi = Joi.object({
@@ -441,6 +488,10 @@ const profileConfigJoi = Joi.object({
     preferredDistanceUnit: Joi.string().valid('KM', 'MI').optional()
         .messages({
             'any.only': c.CODE_PREFERRED_DISTANCE_UNIT_INVALID
+        }),
+    openToDating: Joi.boolean().optional()
+        .messages({
+            "boolean.base": c.CODE_OPEN_TO_DATING_BOOLEAN
         })
 });
 

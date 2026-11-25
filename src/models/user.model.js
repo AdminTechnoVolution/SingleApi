@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const AuthType = require('../enums/EnumAuthType');
 const Platform = require('../enums/EnumPlatform');
+const Intent = require('../enums/EnumIntent');
 
 const locationSchema = new mongoose.Schema({
   coordinates: { type: [Number], required: true },
@@ -37,17 +38,25 @@ const userInfoSchema = new mongoose.Schema({
   fullName: { type: String, required: true, trim: true },
   birthdate: { type: Date, required: true },
   gender: { type: String, ref: 'Gender', required: true },
-  sexualOrientation: { type: String, ref: 'SexualOrientation', required: true },
+  // Required by the validators only for dating profiles (legacy clients or intents incl. 'dating').
+  sexualOrientation: { type: String, ref: 'SexualOrientation' },
   biography: { type: String, maxlength: 500 },
   height: { type: Number },
   zodiacSign: { type: String, ref: 'ZodiacSign' },
   languages: [{ type: String, ref: 'Language' }],
+  // Kultura: languages the user wants to practice.
+  learningLanguages: [{ type: String, ref: 'Language' }],
+  // Kultura: conversation topics (master collection 'interests').
+  interests: [{ type: String, ref: 'Interest' }],
   familyPlans: { type: String, ref: 'FamilyPlan' }
 }, { _id: false });
 
 const preferencesSchema = new mongoose.Schema({
+  // Dating fields: required by the validators only for dating profiles.
   preferences: [{ type: String, ref: 'Gender', required: true }],
-  lookingFor: { type: String, ref: 'LookingFor', required: true }
+  lookingFor: { type: String, ref: 'LookingFor' },
+  // Kultura: friends | language_exchange | dating. Empty/absent = legacy user (treated as dating).
+  intents: [{ type: String, enum: Object.values(Intent) }]
 }, { _id: false });
 
 const profileConfigSchema = new mongoose.Schema({
@@ -61,7 +70,11 @@ const profileConfigSchema = new mongoose.Schema({
     max: { type: Number }
   },
   preferredHeightUnit: { type: String, enum: ['CM', 'FT'], default: 'CM' },
-  preferredDistanceUnit: { type: String, enum: ['KM', 'MI'], default: 'KM' }
+  preferredDistanceUnit: { type: String, enum: ['KM', 'MI'], default: 'KM' },
+  // Kultura "Open to something more": unlocks dating features (Next level, dating rooms/discover).
+  openToDating: { type: Boolean, default: false },
+  // Set server-side whenever the client explicitly sets openToDating (tells an opt-out from legacy data).
+  openToDatingUpdatedAt: { type: Date }
 }, { _id: false });
 
 const authSchema = new mongoose.Schema({
@@ -105,6 +118,10 @@ userSchema.index({ "userInfo.gender": 1 });
 userSchema.index({ "userInfo.birthdate": 1 });
 userSchema.index({ "userInfo.sexualOrientation": 1 });
 userSchema.index({ "preferences.lookingFor": 1 });
+userSchema.index({ "preferences.intents": 1 });
+userSchema.index({ "userInfo.languages": 1 });
+userSchema.index({ "userInfo.learningLanguages": 1 });
+userSchema.index({ "profileConfig.openToDating": 1 });
 userSchema.index({ "status": 1 });
 userSchema.index({ "lastActivityAt": -1 });
 userSchema.index({ "location.coordinates": "2dsphere" });

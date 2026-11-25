@@ -27,6 +27,9 @@ const familyPlanService = require('../services/familyPlan.service');
 const languageService = require('../services/language.service');
 const lookingForService = require('../services/lookingFor.service');
 const zodiacSignService = require('../services/zodiacSign.service');
+const interestService = require('../services/interest.service');
+const Intents = require('../../shared/util/intents');
+const Intent = require('../enums/EnumIntent');
 const util = require('../../shared/util/util');
 const utilNudity = require('../../shared/util/util.nudity');
 const jwtUtil = require('../../shared/util/jwt');
@@ -149,19 +152,11 @@ const registerUser = async (req) => {
         email: body.email.toLowerCase(),
         password: hashedPassword,
         auth: auth,
-        userInfo: {
-            fullName: body.userInfo.fullName,
-            birthdate: body.userInfo.birthdate,
-            gender: body.userInfo.gender,
-            sexualOrientation: body.userInfo.sexualOrientation,
-        },
-        preferences: {
-            preferences: body.preferences.preferences,
-            lookingFor: body.preferences.lookingFor
-        },
+        userInfo: buildRegisterUserInfo(body.userInfo),
+        preferences: buildRegisterPreferences(body.preferences),
         location: body.location,
         effectiveLocation: body.location,
-        profileConfig: body.profileConfig || {},
+        profileConfig: buildRegisterProfileConfig(body),
     });
 
     user = await UserRepository.save(user);
@@ -177,11 +172,75 @@ const registerUser = async (req) => {
     return new BaseResponse(true, [message]);
 };
 
+/** Only the fields each register step may set (new Kultura fields are optional). */
+const buildRegisterUserInfo = (userInfo = {}) => {
+    const info = {
+        fullName: userInfo.fullName,
+        birthdate: userInfo.birthdate,
+        gender: userInfo.gender,
+        sexualOrientation: userInfo.sexualOrientation,
+    };
+    if (userInfo.languages) info.languages = userInfo.languages;
+    if (userInfo.learningLanguages) info.learningLanguages = userInfo.learningLanguages;
+    if (userInfo.interests) info.interests = userInfo.interests;
+    return info;
+};
+
+/** Legacy clients (no intents) get the intents the backfill would give them. */
+const buildRegisterPreferences = (preferences = {}) => ({
+    preferences: preferences.preferences || [],
+    lookingFor: preferences.lookingFor,
+    intents: preferences.intents ? Intents.normalizeIntents(preferences.intents) : Intents.legacyIntentsFor(preferences.lookingFor)
+});
+
+/**
+ * openToDating: explicit value from the client, else (legacy) true when the user has a dating profile.
+ * New clients that send intents without 'dating' start with it off.
+ */
+const buildRegisterProfileConfig = (body) => {
+    const profileConfig = { ...(body.profileConfig || {}) };
+    const intents = body.preferences?.intents;
+    // Multipart bodies carry booleans as strings.
+    if (profileConfig.openToDating === 'true' || profileConfig.openToDating === 'false') {
+        profileConfig.openToDating = profileConfig.openToDating === 'true';
+    }
+    if (typeof profileConfig.openToDating === 'boolean') {
+        profileConfig.openToDatingUpdatedAt = new Date();
+    } else if (intents) {
+        profileConfig.openToDating = Intents.normalizeIntents(intents).includes(Intent.DATING);
+        profileConfig.openToDatingUpdatedAt = new Date();
+    } else {
+        profileConfig.openToDating = Intents.legacyIntentsFor(body.preferences?.lookingFor).includes(Intent.DATING);
+    }
+    return profileConfig;
+};
+
+/**
+ * PUT /me turning dating on (intents incl. 'dating' or openToDating=true) needs a complete
+ * dating profile, either in the same request or already stored.
+ */
+const validateDatingProfileOnUpdate = async (userId, body) => {
+    const enablesDating = (body.preferences?.intents && Intents.normalizeIntents(body.preferences.intents).includes(Intent.DATING))
+        || body.profileConfig?.openToDating === true;
+    if (!enablesDating) return;
+    const current = await UserRepository.findById(userId, 'userInfo.sexualOrientation preferences');
+    const sexualOrientation = body.userInfo?.sexualOrientation ?? current?.userInfo?.sexualOrientation;
+    const genderPreferences = body.preferences?.preferences ?? current?.preferences?.preferences;
+    const lookingFor = body.preferences?.lookingFor ?? current?.preferences?.lookingFor;
+    if (!sexualOrientation || !Array.isArray(genderPreferences) || genderPreferences.length === 0 || !lookingFor) {
+        throw new BusinessException(c.CODE_DATING_PROFILE_INCOMPLETE);
+    }
+};
+
 const updateUser = async (req) => {
     let token = req.headers['authorization'];
     const userId = jwtUtil.getValueFromJwtToken(token, 'id');
     let body = req.body;
     await validateUserInputUpdate(body);
+    await validateDatingProfileOnUpdate(userId, body);
+    if (typeof body.profileConfig?.openToDating === 'boolean') {
+        body = { ...body, profileConfig: { ...body.profileConfig, openToDatingUpdatedAt: new Date() } };
+    }
 
     const userFlattened = flatten(body, { safe: true });
     const userUpdated = await UserRepository.findByIdAndUpdate(userId, userFlattened);
@@ -601,6 +660,8 @@ const validateUserInputUpdate = async (body) => {
         if (invalidLanguages.length > 0) throw new BusinessException(c.CODE_LANGUAGES_NOT_FOUND);
     }
 
+    await validateKulturaFields(body.userInfo);
+
     if (body.preferences?.preferences) {
         const genders = (await genderService.getGenders()).data;
         const validGenderIds = new Set(genders.map(g => g._id));
@@ -703,21 +764,54 @@ const validateUserInput = async (body, files) => {
     const genderFound = genders.find(g => g._id === body.userInfo.gender);
     if (!genderFound) throw new BusinessException(c.CODE_GENDER_NOT_FOUND);
 
-    const sexualOrientations = (await sexualOrientationService.getSexualOrientations()).data;
-    const sexualOrientationFound = sexualOrientations.find(s => s._id === body.userInfo.sexualOrientation);
-    if (!sexualOrientationFound) throw new BusinessException(c.CODE_SEXUAL_ORIENTATION_NOT_FOUND);
+    // Dating fields: mandatory for legacy clients / dating intents (enforced by the validator),
+    // otherwise checked only when sent.
+    const datingProfile = Intents.requiresDatingProfile(body.preferences?.intents);
 
-    const validGenderIds = new Set(genders.map(g => g._id));
-    const invalidPreferences = body.preferences.preferences.filter(preference => !validGenderIds.has(preference));
-    if (invalidPreferences.length > 0) throw new BusinessException(c.CODE_PREFERENCE_NOT_FOUND);
+    if (datingProfile || body.userInfo.sexualOrientation) {
+        const sexualOrientations = (await sexualOrientationService.getSexualOrientations()).data;
+        const sexualOrientationFound = sexualOrientations.find(s => s._id === body.userInfo.sexualOrientation);
+        if (!sexualOrientationFound) throw new BusinessException(c.CODE_SEXUAL_ORIENTATION_NOT_FOUND);
+    }
 
-    const lookingFor = (await lookingForService.getLookingFor()).data;
-    const lookingForFound = lookingFor.find(l => l._id === body.preferences.lookingFor);
-    if (!lookingForFound) throw new BusinessException(c.CODE_LOOKING_FOR_NOT_FOUND);
+    if (datingProfile || body.preferences?.preferences) {
+        const validGenderIds = new Set(genders.map(g => g._id));
+        const invalidPreferences = (body.preferences?.preferences || []).filter(preference => !validGenderIds.has(preference));
+        if (invalidPreferences.length > 0) throw new BusinessException(c.CODE_PREFERENCE_NOT_FOUND);
+    }
+
+    if (datingProfile || body.preferences?.lookingFor) {
+        const lookingFor = (await lookingForService.getLookingFor()).data;
+        const lookingForFound = lookingFor.find(l => l._id === body.preferences?.lookingFor);
+        if (!lookingForFound) throw new BusinessException(c.CODE_LOOKING_FOR_NOT_FOUND);
+    }
+
+    if (body.userInfo.languages) {
+        const languages = (await languageService.getLanguages()).data;
+        const validLanguagesIds = new Set(languages.map(l => l._id));
+        if (body.userInfo.languages.some(id => !validLanguagesIds.has(id))) throw new BusinessException(c.CODE_LANGUAGES_NOT_FOUND);
+    }
+
+    await validateKulturaFields(body.userInfo);
 
     const existingUser = await UserRepository.findOneByFilter({ email: body.email });
 
     if (existingUser) throw new BusinessException(c.CODE_USER_EXISTS);
+};
+
+/** learningLanguages / interests must exist in their master collections. */
+const validateKulturaFields = async (userInfo) => {
+    if (userInfo?.learningLanguages) {
+        const languages = (await languageService.getLanguages()).data;
+        const validIds = new Set(languages.map(l => l._id));
+        if (userInfo.learningLanguages.some(id => !validIds.has(id))) throw new BusinessException(c.CODE_LEARNING_LANGUAGES_NOT_FOUND);
+    }
+
+    if (userInfo?.interests) {
+        const interests = (await interestService.getInterests()).data;
+        const validIds = new Set(interests.map(i => i._id));
+        if (userInfo.interests.some(id => !validIds.has(id))) throw new BusinessException(c.CODE_INTERESTS_NOT_FOUND);
+    }
 };
 
 const createPipeline = async (id) => {
@@ -791,6 +885,11 @@ async function verifySocialToken(body, req) {
 }
 
 module.exports = {
+    buildRegisterUserInfo,
+    buildRegisterPreferences,
+    buildRegisterProfileConfig,
+    validateUserInput,
+    validateDatingProfileOnUpdate,
     registerUser,
     getUserMe,
     getUserById,
