@@ -36,6 +36,7 @@ const subscriptionRoutes = require('./src/routes/subscription.route')
 const SubscriptionController = require('./src/controllers/subscription.controller');
 const matchRoutes = require('./src/routes/match.route');
 const chatRoutes = require('./src/routes/chat.route');
+const connectionRoutes = require('./src/routes/connection.route');
 const userRoutes = require('./src/routes/user.route');
 const loginRoutes = require('./src/routes/auth.route');
 const googleRoutes = require('./src/routes/google.route');
@@ -63,6 +64,7 @@ app.use(responseLogger);
 app.use('/api/', loginRoutes);
 app.use('/api/', matchRoutes);
 app.use('/api/', chatRoutes);
+app.use('/api/', connectionRoutes);
 app.use('/api/', healthRoutes);
 app.use('/api/', appRoutes);
 app.use('/api/', blindDateRoutes);

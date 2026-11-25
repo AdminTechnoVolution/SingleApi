@@ -163,6 +163,9 @@ const createPipeline = async (userId, queryParams) => {
             'lastMessage': 1,
             'unreadCounts': 1,
             'deletedAt': 1,
+            // Kultura (additive): connection intent and whether "Next level" is unlocked.
+            'intent': '$match.intent',
+            'nextLevelUnlocked': { $ne: [{ $ifNull: ['$match.nextLevel.unlockedAt', null] }, null] },
             'users': {
                 $filter: {
                     input: "$users",
@@ -190,4 +193,4 @@ const validateUserInChat = async (chatId, userId) => {
     return chatExists;
 }
 
-module.exports = { getChats, messageSeen, getChatConversations, deleteChatConversation };
+module.exports = { getChats, messageSeen, getChatConversations, deleteChatConversation, createPipeline };

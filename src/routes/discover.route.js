@@ -27,6 +27,15 @@ const DiscoverController = require('../controllers/discover.controller');
  *         schema:
  *           type: string
  *         description: Cursor for pagination
+ *       - in: query
+ *         name: intent
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [friends, language_exchange, dating]
+ *         description: >
+ *           Kultura feed. Absent + header X-App-Platform ios → language_exchange.
+ *           Absent otherwise → legacy dating feed (unchanged). dating requires profileConfig.openToDating.
  *     responses:
  *       200:
  *         description: Success

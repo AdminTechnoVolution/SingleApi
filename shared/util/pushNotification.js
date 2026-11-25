@@ -56,6 +56,11 @@ async function getDataForNotification(event, data) {
             title = 'New Match';
             body = 'Open Chat';
             break;
+        case constants.WS_EVENT_NEXT_LEVEL_UNLOCKED:
+            // Neutral copy: the lock screen must not reveal the romantic context.
+            title = 'Kultura';
+            body = 'Something new is waiting in one of your connections 💫';
+            break;
     }
 
     return { title, body };

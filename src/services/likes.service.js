@@ -22,6 +22,8 @@ const Likes = require('../models/likes.model');
 const Chat = require('../models/chat.model');
 const Match = require('../models/match.model');
 const PushNotification = require('../../shared/util/pushNotification');
+const Intents = require('../../shared/util/intents');
+const Intent = require('../enums/EnumIntent');
 const limitGetLikesReceived = Number(process.env.LIMIT_GET_LIKES_RECEIVED);
 
 const sendLike = async (req) => {
@@ -29,6 +31,9 @@ const sendLike = async (req) => {
     const userId = jwtUtil.getValueFromJwtToken(token, 'id');
     let body = req.body;
     await validateSendLike(body, userId);
+    // Kultura: intent from the body (discover feed) or iOS default; absent = legacy like.
+    const { intent } = Intents.resolveRequestedIntent(body.intent, req.headers);
+    if (intent === Intent.DATING) await validateOpenToDating(userId);
 
     // Idempotent: liked profiles reappear in discover, so a repeated like must
     // not fail on the unique index nor consume another daily like.
@@ -44,19 +49,22 @@ const sendLike = async (req) => {
 
     const like = new Likes({
         fromUserId: userId,
-        toUserId: body.toUserId
+        toUserId: body.toUserId,
+        ...(intent ? { intent } : {})
     });
 
     await LikeRepository.save(like);
 
-    const isMatch = await validateIsMatch(body, userId);
+    const reciprocal = await findReciprocalLike(body, userId);
+    const isMatch = Boolean(reciprocal);
     logger.info(`Like sent: fromUserId: ${userId}, toUserId: ${body.toUserId}, isMatch: ${isMatch}`, { className: filename, req: req });
     let data = {
         isMatch
     };
 
     if (isMatch) {
-        data = await matchTasks(userId, body, data);
+        const matchIntent = Intents.resolveMatchIntent(intent, reciprocal.intent);
+        data = await matchTasks(userId, { ...body, intent: matchIntent }, data);
     } else {
         data = await likeTasks(body);
     }
@@ -75,8 +83,10 @@ const matchTasks = async (userId, body, data) => {
     const legacy = await MatchRepository.findOneByFilter({ users: { $all: [new ObjectId(userId), new ObjectId(body.toUserId)] }, status: { $ne: 'matched' } });
     if (legacy && legacy.status !== 'blocked') await require('./relationship.service').purgeRelationship(userId, body.toUserId);
     const orderedUsers = [userId, body.toUserId].sort();
+    // body.intent (optional): Kultura connection intent; absent = legacy dating match.
     let match = new Match({
-        users: orderedUsers
+        users: orderedUsers,
+        ...(Intents.isValidIntent(body.intent) ? { intent: body.intent } : {})
     });
 
     match = await MatchRepository.save(match);
@@ -96,6 +106,7 @@ const matchTasks = async (userId, body, data) => {
 
     data.matchId = match._id;
     data.chatId = chat._id;
+    if (match.intent) data.intent = match.intent;
 
     const filter = { fromUserId: new ObjectId(userId), toUserId: new ObjectId(body.toUserId) };
     const filterOpposite = { fromUserId: new ObjectId(body.toUserId), toUserId: new ObjectId(userId) };
@@ -111,7 +122,8 @@ const matchTasks = async (userId, body, data) => {
                 chatId: chat._id,
                 matchWith: userFound._id,
                 fullName: userFound.userInfo.fullName,
-                photos: userFound.photos
+                photos: userFound.photos,
+                ...(match.intent ? { intent: match.intent } : {})
             });
             PushNotification.proccessNotificationsByUser(userIdStr, constants.WS_EVENT_NEW_MATCH, data);
         }
@@ -198,10 +210,18 @@ const createPipeline = async (userId, queryParams) => {
     return pipeline;
 };
 
-const validateIsMatch = async (body, userId) => {
-    const isReciprocal = await LikeRepository.findByAnyFilter({ fromUserId: body.toUserId, toUserId: userId });
-    return Array.isArray(isReciprocal) && isReciprocal.length > 0;
+const findReciprocalLike = async (body, userId) => {
+    const reciprocal = await LikeRepository.findByAnyFilter({ fromUserId: body.toUserId, toUserId: userId });
+    return Array.isArray(reciprocal) && reciprocal.length > 0 ? reciprocal[0] : null;
 }
+
+const validateIsMatch = async (body, userId) => Boolean(await findReciprocalLike(body, userId));
+
+/** Dating likes (Kultura) need "Open to something more" on. */
+const validateOpenToDating = async (userId) => {
+    const me = await UserRepository.findById(userId, 'profileConfig.openToDating');
+    if (me?.profileConfig?.openToDating !== true) throw new BusinessException(c.CODE_ERROR_OPEN_TO_DATING_REQUIRED);
+};
 
 const validateSendLike = async (body, userId) => {
     if (body.toUserId === userId) throw new BusinessException(c.CODE_ERROR_USER_CANNOT_LIKE_SELF);

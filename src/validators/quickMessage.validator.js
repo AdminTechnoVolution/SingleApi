@@ -33,7 +33,10 @@ const quickMessageSchema = Joi.object({
             'string.empty': c.CODE_CONTENT_REQUIRED,
             'string.min': c.CODE_CONTENT_REQUIRED,
             'string.max': c.CODE_CONTENT_MAX
-        })
+        }),
+    // Kultura: feed intent (optional; absent = legacy). Stored on the implied like.
+    intent: Joi.string().valid(...Object.values(require('../enums/EnumIntent'))).optional()
+        .messages({ 'any.only': c.CODE_INTENT_INVALID })
 });
 
 module.exports = { quickMessageSchema, QUICK_MESSAGE_MAX_LENGTH };
