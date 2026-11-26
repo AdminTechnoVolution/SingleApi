@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 
 # Mac Files
 .DS_Store
+/backup-kultura

@@ -12,7 +12,8 @@ const me = {
 };
 
 const stages = (pipeline, name) => pipeline.filter(stage => stage[name]);
-const mutualGender = (pipeline) => pipeline.find(stage => stage.$match?.$expr?.$and?.some(cond => JSON.stringify(cond).includes('$preferences.preferences')));
+const mutualGender = (pipeline) => pipeline.find(stage => stage.$match?.$expr?.$and?.some(cond => cond.$gt && JSON.stringify(cond).includes('$preferences.preferences')));
+const preferredGender = (pipeline) => pipeline.find(stage => stage.$match?.$expr?.$and?.some(cond => cond.$or && JSON.stringify(cond).includes('$preferences.preferences')));
 const intentFilters = (pipeline) => pipeline.filter(stage => stage.$match && ('preferences.intents' in stage.$match || '$or' in stage.$match || '$nor' in stage.$match));
 
 test('legacy request (no intent): same dating pipeline, mutual gender filter kept', () => {
@@ -33,9 +34,10 @@ test('legacy request (no intent): same dating pipeline, mutual gender filter kep
     assert.equal(stages(pipeline, '$addFields').some(stage => 'languageScore' in stage.$addFields), false);
 });
 
-test('language_exchange: no gender filter, only users with that intent, ranked by language then interests', () => {
+test('language_exchange: soft gender filter, only users with that intent, ranked by language then interests', () => {
     const pipeline = createPipeline(me, { idsOnly: true, intent: 'language_exchange' });
     assert.equal(mutualGender(pipeline), undefined);
+    assert.ok(preferredGender(pipeline), '"Quiero aprender con" filter present');
     assert.ok(pipeline.some(stage => stage.$match?.['preferences.intents'] === 'language_exchange'));
     const score = pipeline.find(stage => stage.$addFields?.languageScore);
     assert.ok(score);
@@ -51,6 +53,7 @@ test('friends feed excludes dating-only users by requiring the friends intent', 
     const pipeline = createPipeline(me, { idsOnly: true, intent: 'friends' });
     assert.ok(pipeline.some(stage => stage.$match?.['preferences.intents'] === 'friends'));
     assert.equal(mutualGender(pipeline), undefined);
+    assert.ok(preferredGender(pipeline));
 });
 
 test('dating feed keeps the mutual gender filter and only dating profiles', () => {
@@ -100,4 +103,17 @@ test('profiles shown to others never reveal "open to dating" (discover and GET /
     const [strip, hide] = pipeline.slice(-2);
     assert.deepEqual(strip.$addFields['preferences.intents'], { $setDifference: [{ $ifNull: ['$preferences.intents', []] }, ['dating']] });
     assert.deepEqual(hide, { $project: { 'profileConfig.openToDating': 0, 'profileConfig.openToDatingUpdatedAt': 0 } });
+});
+
+test('Kultura feeds follow "Quiero aprender con" both ways; empty means anyone', () => {
+    const withPrefs = JSON.stringify(preferredGender(createPipeline(me, { idsOnly: true, intent: 'language_exchange' })));
+    // Their gender must be one I chose...
+    assert.match(withPrefs, /"\$in":\[\{"\$ifNull":\["\$userInfo.gender",null\]\},\["F"\]\]/);
+    // ...and my gender must be one they chose, unless they chose nothing.
+    assert.match(withPrefs, /"\$eq":\[\{"\$size":\{"\$ifNull":\["\$preferences.preferences",\[\]\]\}\},0\]/);
+    assert.match(withPrefs, /"\$in":\["M",\{"\$ifNull":\["\$preferences.preferences",\[\]\]\}\]/);
+
+    const noPrefs = { ...me, preferences: { intents: ['friends'] } };
+    const open = preferredGender(createPipeline(noPrefs, { idsOnly: true, intent: 'friends' }));
+    assert.equal(open.$match.$expr.$and.length, 1, 'no own-choice condition when I chose nothing');
 });

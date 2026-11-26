@@ -98,6 +98,24 @@ const mutualGenderStage = (myGender, myPreferences) => ({
 });
 
 /**
+ * Kultura feeds (friends / language_exchange): the "Quiero aprender con" gender choice
+ * (preferences.preferences, the same field Single users already set), applied both ways.
+ * An empty choice on either side means "anyone", so new users without it are not hidden.
+ */
+const preferredGenderStage = (myGender, myPreferences) => {
+    const and = [{
+        $or: [
+            { $eq: [{ $size: { $ifNull: ["$preferences.preferences", []] } }, 0] },
+            ...(myGender ? [{ $in: [myGender, { $ifNull: ["$preferences.preferences", []] }] }] : [])
+        ]
+    }];
+    if (Array.isArray(myPreferences) && myPreferences.length > 0) {
+        and.push({ $in: [{ $ifNull: ["$userInfo.gender", null] }, myPreferences] });
+    }
+    return { $match: { $expr: { $and: and } } };
+};
+
+/**
  * Candidate filter per intent:
  *  - legacy (null): everyone the old feed showed, minus users who explicitly turned
  *    "Open to something more" off in the new app;
@@ -312,6 +330,8 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
     // Preferences compatibility (mutual gender): only for the dating feed (legacy or intent=dating)
     if (!isRankedIntent(intent)) {
         pipeline.push(mutualGenderStage(myGender, myPreferences));
+    } else {
+        pipeline.push(preferredGenderStage(myGender, myPreferences));
     }
 
     if (idsOnly && isRankedIntent(intent)) {
