@@ -40,8 +40,12 @@ const getUsersDiscover = async (req) => {
 
     const ranked = isRankedIntent(intent);
 
+    // Kultura bubble explore: ?scope=country (my country, no distance limit) | world (everyone).
+    // No scope = the distance-limited feed, unchanged. Opening a foreign profile is gated in the app.
+    const scope = resolveScope(queryParams.scope, user);
+
     // 1) Ids of every eligible candidate (cheap: _id only).
-    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true, intent }));
+    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true, intent, scope }));
 
     // 2) Seeded random page: a new round (no cursor) = a new order.
     //    Non-dating intents: ranked by language overlap, then interests, random among ties.
@@ -52,7 +56,7 @@ const getUsersDiscover = async (req) => {
     // 3) Full profiles for that page, returned in the shuffled order.
     let users = [];
     if (pageIds.length > 0) {
-        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds, intent }), true);
+        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds, intent, scope }), true);
         const byId = new Map(found.map(u => [u._id.toString(), u]));
         users = pageIds.map(id => byId.get(id)).filter(Boolean);
     }
@@ -66,6 +70,38 @@ const getUsersDiscover = async (req) => {
         });
 
     return new BaseResponse(true, [], response);
+};
+
+const Scope = Object.freeze({ COUNTRY: 'country', WORLD: 'world' });
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Requested scope; `country` needs a known country (otherwise the distance feed is used). */
+const resolveScope = (requested, meUser) => {
+    if (requested === Scope.WORLD) return Scope.WORLD;
+    if (requested === Scope.COUNTRY) return countryOf(meUser) ? Scope.COUNTRY : null;
+    return null;
+};
+
+const countryOf = (meUser) => (meUser.effectiveLocation?.country || '').trim();
+
+/** Same-country match on the free-text geocoded country (case/space insensitive). */
+const sameCountryQuery = (country) => ({ 'effectiveLocation.country': { $regex: `^\\s*${escapeRegex(country)}\\s*$`, $options: 'i' } });
+
+/** $geoNear for a scope: distance-limited (none), my country, or everyone (world). */
+const geoNearStage = (meUser, scope) => {
+    const geoNear = {
+        near: { type: "Point", coordinates: meUser.effectiveLocation.coordinates },
+        distanceField: "distance",
+        spherical: true,
+        key: "effectiveLocation.coordinates"
+    };
+    if (!scope) {
+        geoNear.maxDistance = meUser.profileConfig?.maximumDistance;
+    } else if (scope === Scope.COUNTRY) {
+        geoNear.query = sameCountryQuery(countryOf(meUser));
+    }
+    return { $geoNear: geoNear };
 };
 
 const isRankedIntent = (intent) => Boolean(intent) && intent !== Intent.DATING;
@@ -155,26 +191,16 @@ const scoreStage = (meUser) => {
     };
 };
 
-const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null } = {}) => {
+const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null, scope = null } = {}) => {
     // Precompute my data
     const myGender = meUser.userInfo?.gender;
     const myPreferences = meUser.preferences?.preferences;
-    const myMaxDistance = meUser.profileConfig?.maximumDistance;
     const myAgeRange = meUser.profileConfig?.ageRange;
-    const myOriginLocation = meUser.effectiveLocation.coordinates;
 
     const pipeline = [];
 
-    // Filter by near location
-    pipeline.push({
-        $geoNear: {
-            near: { type: "Point", coordinates: myOriginLocation },
-            distanceField: "distance",
-            maxDistance: myMaxDistance,
-            spherical: true,
-            key: "effectiveLocation.coordinates"
-        }
-    });
+    // Filter by near location (or by country / world for the Kultura scopes)
+    pipeline.push(geoNearStage(meUser, scope));
 
     // Exclude me, only active users
     const matchStage = {
@@ -377,4 +403,4 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
     return pipeline;
 };
 
-module.exports = { getUsersDiscover, createPipeline, canDiscoverDating };
+module.exports = { getUsersDiscover, createPipeline, canDiscoverDating, Scope };

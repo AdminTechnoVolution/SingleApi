@@ -117,3 +117,26 @@ test('Kultura feeds follow "Quiero aprender con" both ways; empty means anyone',
     const open = preferredGender(createPipeline(noPrefs, { idsOnly: true, intent: 'friends' }));
     assert.equal(open.$match.$expr.$and.length, 1, 'no own-choice condition when I chose nothing');
 });
+
+test('scope=country: no distance limit, only my country (case/space insensitive)', () => {
+    const meCo = { ...me, effectiveLocation: { coordinates: [-75.56, 6.25], country: 'Colombia' } };
+    const geo = createPipeline(meCo, { idsOnly: true, intent: 'language_exchange', scope: 'country' })[0].$geoNear;
+    assert.equal(geo.maxDistance, undefined);
+    const rule = geo.query['effectiveLocation.country'];
+    const re = new RegExp(rule.$regex, rule.$options);
+    assert.ok(re.test(' colombia '));
+    assert.equal(re.test('Colombia Británica'), false);
+});
+
+test('scope=world: no distance limit and no country filter', () => {
+    const meCo = { ...me, effectiveLocation: { coordinates: [-75.56, 6.25], country: 'Colombia' } };
+    const world = createPipeline(meCo, { idsOnly: true, intent: 'friends', scope: 'world' })[0].$geoNear;
+    assert.equal(world.maxDistance, undefined);
+    assert.equal(world.query, undefined);
+});
+
+test('no scope keeps the distance-limited $geoNear', () => {
+    const geo = createPipeline(me, { idsOnly: true, intent: 'friends' })[0].$geoNear;
+    assert.equal(geo.maxDistance, 50000);
+    assert.equal(geo.query, undefined);
+});
