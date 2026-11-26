@@ -194,12 +194,23 @@ const preferredGenderStage = (myGender, myPreferences) => {
     return { $match: { $expr: { $and: and } } };
 };
 
+/** Users who appear in `intent`'s feed: `profileConfig.discoverIntents` absent/empty (= all) or including it. */
+const appearsIn = (intent) => ({
+    $or: [
+        { 'profileConfig.discoverIntents': intent },
+        { 'profileConfig.discoverIntents': { $exists: false } },
+        { 'profileConfig.discoverIntents': { $size: 0 } }
+    ]
+});
+
 /**
  * Candidate filter per intent:
  *  - legacy (null): everyone the old feed showed, minus users who explicitly turned
  *    "Open to something more" off in the new app;
- *  - dating: dating profiles only (intents incl. dating or legacy), not opted out;
- *  - friends / language_exchange: users whose intents include it (dating-only users excluded).
+ *  - dating: dating profiles only (intents incl. dating or legacy), not opted out, and not
+ *    hidden from dating ("No quiero citas" = discoverIntents without 'dating');
+ *  - friends / language_exchange: everyone who appears in that feed (all users by default,
+ *    Single users included), whatever they picked as their own intents.
  */
 const intentMatchStage = (intent) => {
     if (!intent) {
@@ -209,15 +220,18 @@ const intentMatchStage = (intent) => {
         return {
             $match: {
                 'profileConfig.openToDating': { $ne: false },
-                $or: [
-                    { 'preferences.intents': Intent.DATING },
-                    { 'preferences.intents': { $exists: false } },
-                    { 'preferences.intents': { $size: 0 } }
+                $and: [
+                    { $or: [
+                        { 'preferences.intents': Intent.DATING },
+                        { 'preferences.intents': { $exists: false } },
+                        { 'preferences.intents': { $size: 0 } }
+                    ] },
+                    appearsIn(Intent.DATING)
                 ]
             }
         };
     }
-    return { $match: { 'preferences.intents': intent } };
+    return { $match: appearsIn(intent) };
 };
 
 /** Language overlap (what I learn ↔ what they speak, both ways), then interests overlap. */

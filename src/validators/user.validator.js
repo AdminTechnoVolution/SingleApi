@@ -59,6 +59,13 @@ const Intent = require('../enums/EnumIntent');
  *           type: boolean
  *           example: false
  *           description: Kultura "Open to something more" (dating features). Default false.
+ *         discoverIntents:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [friends, language_exchange, dating]
+ *           example: [language_exchange, friends]
+ *           description: Discover feeds this user appears in. Absent/empty = all. Without 'dating' = "No quiero citas".
  *         ageRange:
  *           type: object
  *           properties:
@@ -492,7 +499,8 @@ const profileConfigJoi = Joi.object({
     openToDating: Joi.boolean().optional()
         .messages({
             "boolean.base": c.CODE_OPEN_TO_DATING_BOOLEAN
-        })
+        }),
+    discoverIntents: intentsJoi.optional()
 });
 
 const registerUserSchema = Joi.object({

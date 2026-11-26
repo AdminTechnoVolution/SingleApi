@@ -34,11 +34,21 @@ test('legacy request (no intent): same dating pipeline, mutual gender filter kep
     assert.equal(stages(pipeline, '$addFields').some(stage => 'languageScore' in stage.$addFields), false);
 });
 
-test('language_exchange: soft gender filter, only users with that intent, ranked by language then interests', () => {
+/** The `discoverIntents` clause for `intent`: absent/empty (= all feeds) or including it. */
+const appearsInClause = (stage, intent) => {
+    const or = stage?.$match?.$or;
+    return Array.isArray(or)
+        && or.some(c => c['profileConfig.discoverIntents'] === intent)
+        && or.some(c => c['profileConfig.discoverIntents']?.$exists === false)
+        && or.some(c => c['profileConfig.discoverIntents']?.$size === 0);
+};
+
+test('language_exchange: soft gender filter, everyone who appears in it (Single users too), ranked by language then interests', () => {
     const pipeline = createPipeline(me, { idsOnly: true, intent: 'language_exchange' });
     assert.equal(mutualGender(pipeline), undefined);
     assert.ok(preferredGender(pipeline), '"Quiero aprender con" filter present');
-    assert.ok(pipeline.some(stage => stage.$match?.['preferences.intents'] === 'language_exchange'));
+    assert.ok(pipeline.some(stage => appearsInClause(stage, 'language_exchange')));
+    assert.equal(pipeline.some(stage => stage.$match?.['preferences.intents']), false, 'own intents do not hide anyone');
     const score = pipeline.find(stage => stage.$addFields?.languageScore);
     assert.ok(score);
     const text = JSON.stringify(score);
@@ -49,19 +59,21 @@ test('language_exchange: soft gender filter, only users with that intent, ranked
     assert.deepEqual(pipeline.at(-1), { $project: { _id: 1, languageScore: 1, interestScore: 1 } });
 });
 
-test('friends feed excludes dating-only users by requiring the friends intent', () => {
+test('friends feed shows everyone who appears in it (dating-only Single users included)', () => {
     const pipeline = createPipeline(me, { idsOnly: true, intent: 'friends' });
-    assert.ok(pipeline.some(stage => stage.$match?.['preferences.intents'] === 'friends'));
+    assert.ok(pipeline.some(stage => appearsInClause(stage, 'friends')));
     assert.equal(mutualGender(pipeline), undefined);
     assert.ok(preferredGender(pipeline));
 });
 
-test('dating feed keeps the mutual gender filter and only dating profiles', () => {
+test('dating feed keeps the mutual gender filter, only dating profiles, minus "No quiero citas"', () => {
     const pipeline = createPipeline(me, { idsOnly: true, intent: 'dating' });
     assert.ok(mutualGender(pipeline));
     const datingOnly = pipeline.find(stage => stage.$match?.['profileConfig.openToDating']);
     assert.deepEqual(datingOnly.$match['profileConfig.openToDating'], { $ne: false });
-    assert.equal(datingOnly.$match.$or.length, 3);
+    const [ownIntents, appears] = datingOnly.$match.$and;
+    assert.equal(ownIntents.$or.length, 3);
+    assert.ok(appearsInClause({ $match: appears }, 'dating'));
 });
 
 test('dating discover requires "Open to something more" and a dating profile', () => {
@@ -172,4 +184,12 @@ test('parseArea validates and clamps the radius', () => {
     assert.equal(parseArea({ lat: '1', lng: '2' }), null);
     assert.equal(parseArea({ lat: '1', lng: '2', radius: '1' }).radius, 10_000);
     assert.equal(parseArea({ lat: '1', lng: '2', radius: '99999999' }).radius, 10_000_000);
+});
+
+test('discoverIntents backfill only fills users without it, with every intent', () => {
+    const { buildBackfillStep, ALL_INTENTS } = require('../scripts/backfill-discover-intents');
+    const step = buildBackfillStep();
+    assert.deepEqual(ALL_INTENTS.slice().sort(), ['dating', 'friends', 'language_exchange']);
+    assert.deepEqual(step.update, { $set: { 'profileConfig.discoverIntents': ALL_INTENTS } });
+    assert.equal(step.filter.$or.length, 2);
 });

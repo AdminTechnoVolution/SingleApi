@@ -74,7 +74,10 @@ const profileConfigSchema = new mongoose.Schema({
   // Kultura "Open to something more": unlocks dating features (Next level, dating rooms/discover).
   openToDating: { type: Boolean, default: false },
   // Set server-side whenever the client explicitly sets openToDating (tells an opt-out from legacy data).
-  openToDatingUpdatedAt: { type: Date }
+  openToDatingUpdatedAt: { type: Date },
+  // Kultura discover: the feeds this user appears in. Empty/absent = all of them (every Single
+  // user by default). "No quiero citas" stores it without 'dating' → hidden from the dating feed.
+  discoverIntents: [{ type: String, enum: Object.values(Intent) }]
 }, { _id: false });
 
 const authSchema = new mongoose.Schema({
