@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPipeline, canDiscoverDating } = require('../src/services/discover.service');
+const { createPipeline, canDiscoverDating, parseArea } = require('../src/services/discover.service');
 const { rankIds, pageOfRanked, decodeCursor } = require('../shared/util/discoverOrder');
 
 const me = {
@@ -139,4 +139,37 @@ test('no scope keeps the distance-limited $geoNear', () => {
     const geo = createPipeline(me, { idsOnly: true, intent: 'friends' })[0].$geoNear;
     assert.equal(geo.maxDistance, 50000);
     assert.equal(geo.query, undefined);
+});
+
+test('scope=world caps candidates per country before the global limit', () => {
+    const meCo = { ...me, effectiveLocation: { coordinates: [-75.56, 6.25], country: 'Colombia' } };
+    for (const intent of ['friends', null]) {
+        const stages = createPipeline(meCo, { idsOnly: true, intent, scope: 'world' });
+        const group = stages.findIndex(s => s.$group);
+        const limit = stages.findIndex(s => s.$limit && typeof s.$limit === 'number' && stages.indexOf(s) > group);
+        assert.ok(group > 0, 'groups by country');
+        assert.ok(stages[group + 1].$project.users.$slice, 'slices each country');
+        assert.ok(limit > group, 'global limit after the per-country cap');
+    }
+    const country = createPipeline(meCo, { idsOnly: true, intent: 'friends', scope: 'country' });
+    assert.equal(country.some(s => s.$group), false);
+});
+
+test('scope=area: $geoNear around the map point with the radius; wide areas cap per country', () => {
+    const meCo = { ...me, effectiveLocation: { coordinates: [-75.56, 6.25], country: 'Colombia' } };
+    const city = createPipeline(meCo, { idsOnly: true, intent: 'friends', scope: 'area', area: { lng: 2.35, lat: 48.85, radius: 50_000 } });
+    assert.deepEqual(city[0].$geoNear.near.coordinates, [2.35, 48.85]);
+    assert.equal(city[0].$geoNear.maxDistance, 50_000);
+    assert.equal(city[0].$geoNear.query, undefined);
+    assert.equal(city.some(s => s.$group), false);
+    const continent = createPipeline(meCo, { idsOnly: true, intent: 'friends', scope: 'area', area: { lng: 10, lat: 50, radius: 3_000_000 } });
+    assert.ok(continent.some(s => s.$group));
+});
+
+test('parseArea validates and clamps the radius', () => {
+    assert.deepEqual(parseArea({ lat: '48.85', lng: '2.35', radius: '50000' }), { lat: 48.85, lng: 2.35, radius: 50000 });
+    assert.equal(parseArea({ lat: '95', lng: '2', radius: '1000' }), null);
+    assert.equal(parseArea({ lat: '1', lng: '2' }), null);
+    assert.equal(parseArea({ lat: '1', lng: '2', radius: '1' }).radius, 10_000);
+    assert.equal(parseArea({ lat: '1', lng: '2', radius: '99999999' }).radius, 10_000_000);
 });

@@ -14,6 +14,8 @@ const Intent = require('../enums/EnumIntent');
 const limitGetUsersDiscover = Number(process.env.LIMIT_GET_USERS_DISCOVER);
 // Nearest N candidates that take part in a round (keeps the id scan bounded).
 const discoverMaxCandidates = Number(process.env.DISCOVER_MAX_CANDIDATES) || 1000;
+// scope=world: at most this many candidates per country, so the world map is not just my surroundings.
+const discoverWorldPerCountry = Number(process.env.DISCOVER_WORLD_PER_COUNTRY) || 25;
 
 const getUsersDiscover = async (req) => {
     const queryParams = req.query;
@@ -40,12 +42,14 @@ const getUsersDiscover = async (req) => {
 
     const ranked = isRankedIntent(intent);
 
-    // Kultura bubble explore: ?scope=country (my country, no distance limit) | world (everyone).
+    // Kultura bubble explore: ?scope=country (my country, no distance limit) | world (everyone)
+    // | area&lat&lng&radius (the part of the map the user is looking at, radius in meters).
     // No scope = the distance-limited feed, unchanged. Opening a foreign profile is gated in the app.
-    const scope = resolveScope(queryParams.scope, user);
+    const area = parseArea(queryParams);
+    const scope = resolveScope(queryParams.scope, user, area);
 
     // 1) Ids of every eligible candidate (cheap: _id only).
-    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true, intent, scope }));
+    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true, intent, scope, area }));
 
     // 2) Seeded random page: a new round (no cursor) = a new order.
     //    Non-dating intents: ranked by language overlap, then interests, random among ties.
@@ -56,7 +60,7 @@ const getUsersDiscover = async (req) => {
     // 3) Full profiles for that page, returned in the shuffled order.
     let users = [];
     if (pageIds.length > 0) {
-        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds, intent, scope }), true);
+        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds, intent, scope, area }), true);
         const byId = new Map(found.map(u => [u._id.toString(), u]));
         users = pageIds.map(id => byId.get(id)).filter(Boolean);
     }
@@ -72,13 +76,31 @@ const getUsersDiscover = async (req) => {
     return new BaseResponse(true, [], response);
 };
 
-const Scope = Object.freeze({ COUNTRY: 'country', WORLD: 'world' });
+const Scope = Object.freeze({ COUNTRY: 'country', WORLD: 'world', AREA: 'area' });
+
+// scope=area radius limits (meters): a city up to half the planet.
+const AREA_MIN_RADIUS = 10_000;
+const AREA_MAX_RADIUS = 10_000_000;
+// From this radius on the area spans several countries: cap candidates per country too.
+const AREA_SPREAD_RADIUS = 1_000_000;
+
+/** `{ lng, lat, radius }` from ?lat&lng&radius, or null when missing/invalid. */
+const parseArea = (query = {}) => {
+    const lat = Number(query.lat), lng = Number(query.lng), radius = Number(query.radius);
+    if (![lat, lng, radius].every(Number.isFinite)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || radius <= 0) return null;
+    return { lat, lng, radius: Math.min(Math.max(radius, AREA_MIN_RADIUS), AREA_MAX_RADIUS) };
+};
+
+/** Candidates are capped per country (world, or an area wider than a country). */
+const spreadsCountries = (scope, area) => scope === Scope.WORLD || (scope === Scope.AREA && area?.radius >= AREA_SPREAD_RADIUS);
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Requested scope; `country` needs a known country (otherwise the distance feed is used). */
-const resolveScope = (requested, meUser) => {
+const resolveScope = (requested, meUser, area = null) => {
     if (requested === Scope.WORLD) return Scope.WORLD;
+    if (requested === Scope.AREA) return area ? Scope.AREA : Scope.WORLD;
     if (requested === Scope.COUNTRY) return countryOf(meUser) ? Scope.COUNTRY : null;
     return null;
 };
@@ -88,10 +110,11 @@ const countryOf = (meUser) => (meUser.effectiveLocation?.country || '').trim();
 /** Same-country match on the free-text geocoded country (case/space insensitive). */
 const sameCountryQuery = (country) => ({ 'effectiveLocation.country': { $regex: `^\\s*${escapeRegex(country)}\\s*$`, $options: 'i' } });
 
-/** $geoNear for a scope: distance-limited (none), my country, or everyone (world). */
-const geoNearStage = (meUser, scope) => {
+/** $geoNear for a scope: distance-limited (none), my country, everyone (world), or around a map point (area). */
+const geoNearStage = (meUser, scope, area = null) => {
+    const inArea = scope === Scope.AREA && area;
     const geoNear = {
-        near: { type: "Point", coordinates: meUser.effectiveLocation.coordinates },
+        near: { type: "Point", coordinates: inArea ? [area.lng, area.lat] : meUser.effectiveLocation.coordinates },
         distanceField: "distance",
         spherical: true,
         key: "effectiveLocation.coordinates"
@@ -100,8 +123,28 @@ const geoNearStage = (meUser, scope) => {
         geoNear.maxDistance = meUser.profileConfig?.maximumDistance;
     } else if (scope === Scope.COUNTRY) {
         geoNear.query = sameCountryQuery(countryOf(meUser));
+    } else if (inArea) {
+        geoNear.maxDistance = area.radius;
     }
     return { $geoNear: geoNear };
+};
+
+/**
+ * Keeps the first `discoverWorldPerCountry` (already sorted) candidates of each country, then
+ * restores the global order. Countries are compared trimmed and case-insensitive.
+ */
+const perCountryStages = (fields, sort) => {
+    const keep = Object.fromEntries(['_id', ...fields].map(f => [f, `$${f}`]));
+    return [
+        { $group: {
+            _id: { $toLower: { $trim: { input: { $ifNull: ['$effectiveLocation.country', ''] } } } },
+            users: { $push: keep }
+        } },
+        { $project: { users: { $slice: ['$users', discoverWorldPerCountry] } } },
+        { $unwind: '$users' },
+        { $replaceRoot: { newRoot: '$users' } },
+        { $sort: sort }
+    ];
 };
 
 const isRankedIntent = (intent) => Boolean(intent) && intent !== Intent.DATING;
@@ -191,7 +234,7 @@ const scoreStage = (meUser) => {
     };
 };
 
-const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null, scope = null } = {}) => {
+const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null, scope = null, area = null } = {}) => {
     // Precompute my data
     const myGender = meUser.userInfo?.gender;
     const myPreferences = meUser.preferences?.preferences;
@@ -200,7 +243,7 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
     const pipeline = [];
 
     // Filter by near location (or by country / world for the Kultura scopes)
-    pipeline.push(geoNearStage(meUser, scope));
+    pipeline.push(geoNearStage(meUser, scope, area));
 
     // Exclude me, only active users
     const matchStage = {
@@ -362,9 +405,11 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
 
     if (idsOnly && isRankedIntent(intent)) {
         // Best language/interest matches first, then nearest; random order inside a rank is applied per round.
+        const sort = { languageScore: -1, interestScore: -1, distance: 1, _id: 1 };
         pipeline.push(
             scoreStage(meUser),
-            { $sort: { languageScore: -1, interestScore: -1, distance: 1, _id: 1 } },
+            { $sort: sort },
+            ...(spreadsCountries(scope, area) ? perCountryStages(['languageScore', 'interestScore', 'distance'], sort) : []),
             { $limit: discoverMaxCandidates },
             { $project: { _id: 1, languageScore: 1, interestScore: 1 } }
         );
@@ -375,6 +420,7 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
         // $geoNear output is distance-sorted: keep the nearest candidates.
         pipeline.push(
             { $sort: { distance: 1, _id: 1 } },
+            ...(spreadsCountries(scope, area) ? perCountryStages(['distance'], { distance: 1, _id: 1 }) : []),
             { $limit: discoverMaxCandidates },
             { $project: { _id: 1 } }
         );
@@ -403,4 +449,4 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null
     return pipeline;
 };
 
-module.exports = { getUsersDiscover, createPipeline, canDiscoverDating, Scope };
+module.exports = { getUsersDiscover, createPipeline, canDiscoverDating, Scope, parseArea };
