@@ -243,7 +243,7 @@ This is sent to both users with the existing helper. FCM `data` looks like this:
 { "type": "nextLevelUnlocked", "custom_body": "Something new is waiting in one of your connections 💫", "payload": "{\"success\":true,\"messages\":[],\"data\":{\"chatId\":\"68c4…\",\"unlockedAt\":\"…\"}}" }
 ```
 
-The visible text is deliberately neutral (title "Kultura"), so the lock screen does not show the romantic context. The current push helper sends no `apns` block, so on iOS this message arrives data-only, like every other push type today.
+The Android/web text is deliberately neutral (title "Kultura"), so the lock screen does not show the romantic context. On iOS it is shown as an APNs alert "💫 Siguiente nivel desbloqueado" (see section 13).
 
 ## 7. Rooms ("Salas" = blind dates with an intent)
 
@@ -387,3 +387,26 @@ node scripts/backfill-user-intents.js --apply   # writes
 * Users without `openToDating` get `intents.includes('dating')`.
 * Existing values are never overwritten, so the script is safe to re-run.
 * Seed `interests` from `scripts/data.interests.json`, the same way as the other master collections.
+
+## 13. Push notifications (iOS)
+
+Every FCM message keeps its `data` payload as before (`type`, `payload` = JSON string of the BaseResponse or `{data}`, plus `custom_body` for notification pushes). FCM puts these keys at the top level of the APNs `userInfo`. The backend also adds an `apns` block (built by `shared/util/apnsConfig.js`, `buildApnsConfig(type, data, lang)`), so iOS shows a visible alert when the app is in the background or killed. There is no top-level `notification` block: Android still gets data-only messages, and FCM ignores `apns` for Android tokens.
+
+Alert pushes use `apns-priority: 10`, `apns-push-type: alert`, `sound: default` and `mutable-content: 1`, plus `thread-id` where one applies. The text is in the recipient's `profileConfig.preferredLanguage` (`"1"` = en, `"3"` = es; anything else falls back to es).
+
+| `data.type` | iOS behavior | Title (es / en) | Body | `thread-id` |
+|---|---|---|---|---|
+| `newMessage` | alert | sender `fullName` | message preview (180 chars max) | `chatId` |
+| `newLike` | alert | "Alguien te saludó 👋" / "Someone said hi 👋" | generic | `greetings` |
+| `newQuickMessage` | alert | "Nuevo mensaje rápido" / "New quick message" | generic, never the content | `greetings` |
+| `newMatch` | alert | "¡Nueva conexión!" / "New connection!" | "Tú y <first name> ya están conectados…" | `chatId` |
+| `nextLevelUnlocked` | alert | "💫 Siguiente nivel desbloqueado" / "💫 Next level unlocked" | generic | `chatId` |
+| `newBlindDateGuest` | alert | "Alguien se unió a tu sala" / "Someone joined your room" | "Toca para empezar la llamada" | `room:<roomId>` |
+| `incomingCall` | alert, `interruption-level: time-sensitive`, `apns-expiration` = ring timeout, `apns-collapse-id: call:<callId>` | "<peerName> te está llamando" / "<peerName> is calling you" | voice or video call | `chatId` |
+| `callStatus` with status `missed` / `cancelled` | alert, same `apns-collapse-id` (it replaces the incoming-call alert) | "Llamada perdida" / "Missed call" | "<peerName> te llamó" | `chatId` |
+| `callStatus` with status `accepted` / `declined`, or any unknown type | silent: `apns-priority: 5`, `apns-push-type: background`, `aps.content-available: 1` | none | none | none |
+
+Notes for the iOS client:
+- iOS shows these alerts itself while the app is in the background. In the foreground, `userNotificationCenter(_:willPresent:)` decides what to do. The app must not also schedule a local notification for the same push, or the user sees it twice. Check the handler for every type listed above.
+- CallKit/PushKit is not used: `incomingCall` is a regular time-sensitive alert. The app needs the Time Sensitive Notifications capability for `interruption-level` to take effect.
+- No `badge` is sent, so the app manages its own badge.

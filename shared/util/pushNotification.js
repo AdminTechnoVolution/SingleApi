@@ -5,11 +5,25 @@ const constants = require('./constants');
 const ObjectId = require("mongoose").Types.ObjectId;
 const firebase = require("../config/firebase");
 const FCMRepository = require("../../src/repository/fcmToken.repository");
+const UserRepository = require("../../src/repository/user.repository");
+const { buildPushMessage, buildDataPushMessage } = require("./pushMessage");
+const { resolvePushLanguage, DEFAULT_LANG } = require("./apnsConfig");
+
+/** Recipient language for the iOS alert text (never blocks a push). */
+async function getPushLanguage(userId) {
+    try {
+        return resolvePushLanguage(await UserRepository.findById(userId, 'profileConfig.preferredLanguage'));
+    } catch (error) {
+        logger.error(`Error resolving push language for ${userId}: ${error}`, { className: filename });
+        return DEFAULT_LANG;
+    }
+}
 
 async function proccessNotificationsByUser(userIdTo, event, data) {
     const resultFCMs = await FCMRepository.findOneByFilter({ userId: new ObjectId(userIdTo) })
     try {
         const { title, body } = await getDataForNotification(event, data);
+        const lang = resultFCMs?.fcmTokens?.length ? await getPushLanguage(userIdTo) : DEFAULT_LANG;
 
         for (const fcm of resultFCMs.fcmTokens) {
             const pushResult = await sendPush(
@@ -17,7 +31,9 @@ async function proccessNotificationsByUser(userIdTo, event, data) {
                 event,
                 data,
                 title,
-                body
+                body,
+                '',
+                lang
             );
             if (!pushResult.success && pushResult.removeToken) {
                 await FCMRepository.findOneByFilterAndPullToken(
@@ -66,33 +82,9 @@ async function getDataForNotification(event, data) {
     return { title, body };
 }
 
-async function sendPush(token, eventType, payload = {}, title = '', body = '', image = '') {
+async function sendPush(token, eventType, payload = {}, title = '', body = '', image = '', lang = DEFAULT_LANG) {
     try {
-        const message = {
-            token,
-            // Keep the visible notification payload web-specific so Android
-            // continues receiving data-only messages for its native handler.
-            webpush: {
-                headers: {
-                    Urgency: "high"
-                },
-                notification: {
-                    title,
-                    body,
-                    icon: "/icon-192.png",
-                    badge: "/icon-192.png",
-                    tag: payload?.data?.chatId || payload?.data?.matchId || eventType || "single"
-                }
-            },
-            android: {
-                priority: "high"
-            },
-            data: {
-                custom_body: body,
-                type: eventType,
-                payload: JSON.stringify(payload)
-            }
-        };
+        const message = buildPushMessage(token, eventType, payload, title, body, lang);
 
         const response = await firebase.messaging().send(message);
 
@@ -115,19 +107,16 @@ async function sendPush(token, eventType, payload = {}, title = '', body = '', i
 
 /**
  * Data-only push to every device of a user (calls). Android handles it natively
- * (full-screen incoming call); the PWA service worker builds the notification.
+ * (full-screen incoming call); the PWA service worker builds the notification;
+ * iOS shows the APNs alert (time-sensitive for incomingCall).
  * ttlSecs: a ring that cannot be delivered in time is useless, so it expires.
  */
 async function sendDataPushToUser(userIdTo, eventType, data = {}, { ttlSecs = 60 } = {}) {
     const resultFCMs = await FCMRepository.findOneByFilter({ userId: new ObjectId(userIdTo) });
+    const lang = resultFCMs?.fcmTokens?.length ? await getPushLanguage(userIdTo) : DEFAULT_LANG;
     for (const token of resultFCMs?.fcmTokens || []) {
         try {
-            const response = await firebase.messaging().send({
-                token,
-                android: { priority: "high", ttl: ttlSecs * 1000 },
-                webpush: { headers: { Urgency: "high", TTL: String(ttlSecs) } },
-                data: { type: eventType, payload: JSON.stringify({ data }) }
-            });
+            const response = await firebase.messaging().send(buildDataPushMessage(token, eventType, data, { ttlSecs, lang }));
             logger.info(`Data push ${eventType} sent. FCM Response: ${response}`, { className: filename });
         } catch (error) {
             logger.error(`Error sendDataPushToUser ${eventType}. FCM Error: ${error}`, { className: filename });
