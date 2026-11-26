@@ -154,3 +154,38 @@ test('lobby channel is not a room channel (peerOffline only targets "bd:" rooms)
     const lobby = source.match(/LOBBY_CHANNEL = '([^']+)'/)[1];
     assert.equal(lobby.startsWith('bd:'), false);
 });
+
+test('Kultura rooms: language-exchange rooms ignore gender/lookingFor rules, dating rooms keep them', () => {
+    const hostMan = (conditions) => ({ hostName: 'David', hostGender: 'man', conditions });
+    const straightWoman = guest();
+    const languageRoom = hostMan(Rules.normalizeConditions({ intent: 'language_exchange', genders: ['man'], lookingFor: ['casual'], language: 'es', topic: '  Comida callejera  ' }));
+    assert.deepEqual(languageRoom.conditions, { genders: [], ageMin: 18, ageMax: 99, languages: [], musicGenres: [], lookingFor: [], intent: 'language_exchange', language: 'es', topic: 'Comida callejera' });
+    // Not looking for the host gender and not matching lookingFor: still compatible for a language room.
+    const notLooking = guest({ preferences: { preferences: ['woman'], lookingFor: 'friends' } });
+    assert.equal(Rules.isCompatible(languageRoom, notLooking, NOW), true);
+    // Room language must be one the guest speaks or learns.
+    assert.equal(Rules.isCompatible(hostMan(Rules.normalizeConditions({ intent: 'language_exchange', language: 'ja' })), straightWoman, NOW), false);
+    assert.equal(Rules.isCompatible(hostMan(Rules.normalizeConditions({ intent: 'language_exchange', language: 'ja' })), guest({ userInfo: { ...straightWoman.userInfo, learningLanguages: ['ja'] } }), NOW), true);
+    // Dating rooms keep the mutual rule, and new-app users who switched dating off are excluded.
+    const datingRoom = hostMan(Rules.normalizeConditions({ intent: 'dating' }));
+    assert.equal(Rules.isCompatible(datingRoom, notLooking, NOW), false);
+    assert.equal(Rules.isCompatible(datingRoom, straightWoman, NOW), true);
+    assert.equal(Rules.isCompatible(datingRoom, guest({ profileConfig: { openToDating: false, openToDatingUpdatedAt: NOW } }), NOW), false);
+    // Legacy rooms (no intent) are dating rooms.
+    assert.equal(Rules.roomIntentOf(room({})), 'dating');
+    assert.equal(Rules.isCompatible(room({}), notLooking, NOW), false);
+});
+
+test('Kultura room listing: legacy listing only shows dating rooms; language listing has no gender filter', () => {
+    const legacy = Rules.buildOpenRoomsFilter(guest(), ['me'], NOW);
+    assert.deepEqual(legacy['conditions.intent'], { $in: [null, 'dating'] });
+    const languageRooms = Rules.buildOpenRoomsFilter(guest(), ['me'], NOW, { intent: 'language_exchange', language: 'es' });
+    assert.equal(languageRooms['conditions.intent'], 'language_exchange');
+    assert.equal(languageRooms['conditions.language'], 'es');
+    assert.equal(JSON.stringify(languageRooms).includes('hostGender'), false);
+    assert.equal(JSON.stringify(languageRooms).includes('conditions.genders'), false);
+    const validator = require('../src/validators/blindDate.validator').blindDateCreateSchema;
+    assert.equal(validator.validate({ conditions: { intent: 'language_exchange', language: '2', topic: 'Cine' } }).error, undefined);
+    assert.ok(validator.validate({ conditions: { intent: 'romance' } }).error);
+    assert.equal(validator.validate({ conditions: { genders: ['woman'] } }).error, undefined, 'legacy body unchanged');
+});

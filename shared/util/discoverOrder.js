@@ -44,4 +44,32 @@ const pageOf = (ids, cursor, pageSize) => {
     return { pageIds, hasMore, nextCursor: hasMore ? encodeCursor(seed, nextOffset) : null };
 };
 
-module.exports = { newSeed, encodeCursor, decodeCursor, shuffleIds, pageOf };
+/**
+ * Kultura ranking: entries [{ id, languageScore, interestScore }] ordered by
+ * language overlap desc, then interests overlap desc, then the seeded random key
+ * (so equally-ranked profiles still come in a new order each round).
+ */
+const rankIds = (entries, seed) =>
+    entries
+        .map(entry => ({
+            id: String(entry.id),
+            lang: Number(entry.languageScore) || 0,
+            interest: Number(entry.interestScore) || 0,
+            key: orderKey(seed, String(entry.id))
+        }))
+        .sort((a, b) => (b.lang - a.lang) || (b.interest - a.interest) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+        .map(entry => entry.id);
+
+/** One page of a ranked round (same cursor format as pageOf). */
+const pageOfRanked = (entries, cursor, pageSize) => {
+    const decoded = decodeCursor(cursor);
+    const seed = decoded?.seed ?? newSeed();
+    const offset = decoded?.offset ?? 0;
+    const ordered = rankIds(entries, seed);
+    const pageIds = ordered.slice(offset, offset + pageSize);
+    const nextOffset = offset + pageIds.length;
+    const hasMore = nextOffset < ordered.length;
+    return { pageIds, hasMore, nextCursor: hasMore ? encodeCursor(seed, nextOffset) : null };
+};
+
+module.exports = { newSeed, encodeCursor, decodeCursor, shuffleIds, pageOf, rankIds, pageOfRanked };

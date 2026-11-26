@@ -9,6 +9,10 @@ const HOST_CONNECT_TIMEOUT_MS = 45 * 1000;
 /** Room documents are purged (Mongo TTL) a day after creation. */
 const ROOM_RETENTION_MS = 24 * 60 * 60 * 1000;
 const LIVE_STATUSES = ['open', 'matched', 'in_call'];
+/** Kultura room kinds. Rooms without intent are legacy blind dates (= dating). */
+const ROOM_INTENTS = ['dating', 'language_exchange'];
+const DEFAULT_ROOM_INTENT = 'dating';
+const TOPIC_MAX_LENGTH = 80;
 
 const ageFrom = (birthdate, now = new Date()) => {
     const born = new Date(birthdate);
@@ -22,13 +26,22 @@ const ageFrom = (birthdate, now = new Date()) => {
 const ids = (values) => (Array.isArray(values) ? values : []).filter(Boolean).map(String);
 const intersects = (wanted, actual) => wanted.length === 0 || ids(actual).some(value => wanted.includes(value));
 
-/** Normalises user-provided conditions (dedupe, ordered age range). */
+/** Intent of a room: legacy rooms (no intent) are dating rooms. */
+const roomIntentOf = (room) => (ROOM_INTENTS.includes(room?.conditions?.intent) ? room.conditions.intent : DEFAULT_ROOM_INTENT);
+
+const isDatingRoom = (room) => roomIntentOf(room) === 'dating';
+
+/**
+ * Normalises user-provided conditions (dedupe, ordered age range).
+ * Kultura fields (intent, language, topic) are only present when the client sent an intent,
+ * so legacy rooms keep exactly the old shape. Non-dating rooms carry no gender/lookingFor rules.
+ */
 const normalizeConditions = (conditions = {}) => {
     let ageMin = Number.isInteger(conditions.ageMin) ? conditions.ageMin : 18;
     let ageMax = Number.isInteger(conditions.ageMax) ? conditions.ageMax : 99;
     if (ageMin > ageMax) [ageMin, ageMax] = [ageMax, ageMin];
     const unique = (values) => [...new Set(ids(values))];
-    return {
+    const normalized = {
         genders: unique(conditions.genders),
         ageMin: Math.max(18, ageMin),
         ageMax: Math.min(99, ageMax),
@@ -36,7 +49,24 @@ const normalizeConditions = (conditions = {}) => {
         musicGenres: unique(conditions.musicGenres),
         lookingFor: unique(conditions.lookingFor)
     };
+    if (ROOM_INTENTS.includes(conditions.intent)) {
+        normalized.intent = conditions.intent;
+        normalized.language = conditions.language ? String(conditions.language).trim() || null : null;
+        normalized.topic = conditions.topic ? String(conditions.topic).trim().slice(0, TOPIC_MAX_LENGTH) || null : null;
+        if (conditions.intent !== 'dating') {
+            normalized.genders = [];
+            normalized.lookingFor = [];
+        }
+    }
+    return normalized;
 };
+
+/** Explicit "Open to something more" opt-out from the new app (legacy users are not opted out). */
+const optedOutOfDating = (user) =>
+    user?.profileConfig?.openToDating === false && Boolean(user?.profileConfig?.openToDatingUpdatedAt);
+
+/** Languages a user can hold a room in: the ones they speak and the ones they learn. */
+const roomLanguagesOf = (user) => [...ids(user?.userInfo?.languages), ...ids(user?.userInfo?.learningLanguages)];
 
 /**
  * Does `guest` (a user document) satisfy the room?
@@ -48,9 +78,13 @@ const isCompatible = (room, guest, now = new Date()) => {
     const info = guest?.userInfo || {};
     const age = ageFrom(info.birthdate, now);
     if (age === null || age < c.ageMin || age > c.ageMax) return false;
-    if (c.genders.length && !c.genders.includes(String(info.gender))) return false;
     if (!intersects(c.languages, info.languages)) return false;
     if (!intersects(c.musicGenres, guest?.musicPreferences?.musicGenres)) return false;
+    if (c.language && !roomLanguagesOf(guest).includes(String(c.language))) return false;
+    // Gender / lookingFor rules (mutual) only apply to dating rooms.
+    if (!isDatingRoom(room)) return true;
+    if (optedOutOfDating(guest)) return false;
+    if (c.genders.length && !c.genders.includes(String(info.gender))) return false;
     if (c.lookingFor.length && !c.lookingFor.includes(String(guest?.preferences?.lookingFor))) return false;
     if (room.hostGender && !ids(guest?.preferences?.preferences).includes(String(room.hostGender))) return false;
     return true;
@@ -60,22 +94,45 @@ const isCompatible = (room, guest, now = new Date()) => {
  * Mongo filter for the open rooms `me` can see (DB-side version of isCompatible).
  * `excludedHostIds`: myself + people I matched/blocked.
  */
-const buildOpenRoomsFilter = (me, excludedHostIds = [], now = new Date()) => {
+const buildOpenRoomsFilter = (me, excludedHostIds = [], now = new Date(), { intent = null, language = null } = {}) => {
     const info = me?.userInfo || {};
     const age = ageFrom(info.birthdate, now) ?? 0;
     const emptyOr = (field, values) => ({ $or: [{ [field]: { $size: 0 } }, { [field]: { $exists: false } }, { [field]: { $in: ids(values) } }] });
-    return {
+    const base = {
         status: 'open',
         guestId: null,
         hostId: { $nin: excludedHostIds },
         created_at: { $gte: new Date(now.getTime() - OPEN_ROOM_TTL_MS) },
         'conditions.ageMin': { $lte: age },
-        'conditions.ageMax': { $gte: age },
+        'conditions.ageMax': { $gte: age }
+    };
+    // Room language: rooms without one, or held in a language I speak or learn.
+    const roomLanguage = { $or: [{ 'conditions.language': { $exists: false } }, { 'conditions.language': null }, { 'conditions.language': { $in: roomLanguagesOf(me) } }] };
+
+    if (intent && intent !== 'dating') {
+        return {
+            ...base,
+            'conditions.intent': intent,
+            ...(language ? { 'conditions.language': String(language) } : {}),
+            $and: [
+                emptyOr('conditions.languages', info.languages),
+                emptyOr('conditions.musicGenres', me?.musicPreferences?.musicGenres),
+                ...(language ? [] : [roomLanguage])
+            ]
+        };
+    }
+
+    // Dating rooms (legacy listing or ?intent=dating): rooms without intent are legacy blind dates.
+    return {
+        ...base,
+        'conditions.intent': { $in: [null, 'dating'] },
+        ...(language ? { 'conditions.language': String(language) } : {}),
         $and: [
             emptyOr('conditions.genders', [info.gender]),
             emptyOr('conditions.languages', info.languages),
             emptyOr('conditions.musicGenres', me?.musicPreferences?.musicGenres),
             emptyOr('conditions.lookingFor', [me?.preferences?.lookingFor]),
+            ...(language ? [] : [roomLanguage]),
             { hostGender: { $in: ids(me?.preferences?.preferences) } }
         ]
     };
@@ -124,6 +181,12 @@ const matchFlagsFor = (room, userId) => {
 };
 
 module.exports = {
+    ROOM_INTENTS,
+    DEFAULT_ROOM_INTENT,
+    TOPIC_MAX_LENGTH,
+    roomIntentOf,
+    isDatingRoom,
+    optedOutOfDating,
     OPEN_ROOM_TTL_MS,
     HOST_CONNECT_TIMEOUT_MS,
     ROOM_RETENTION_MS,

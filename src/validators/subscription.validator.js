@@ -65,7 +65,17 @@ const dlocalGoConfirmSchema = Joi.object({
     externalId: Joi.string().max(255).required()
 });
 
+/** StoreKit 2 Transaction.jwsRepresentation. */
+const appleVerifySchema = Joi.object({
+    signedTransaction: Joi.string().trim().max(16384).required()
+        .messages({
+            'any.required': c.CODE_SIGNED_TRANSACTION_REQUIRED,
+            'string.empty': c.CODE_SIGNED_TRANSACTION_REQUIRED
+        })
+});
+
 module.exports = {
+    appleVerifySchema,
     subscriptionSchema,
     stripeCheckoutSchema,
     dlocalGoCheckoutSchema,

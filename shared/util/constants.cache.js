@@ -9,6 +9,7 @@ module.exports = {
     CACHE_KEY_GENRE: "cache:genres",
     CACHE_KEY_LANGUAGES: "cache:languages",
     CACHE_KEY_LOOKING_FOR: "cache:lookingFor",
+    CACHE_KEY_INTERESTS: "cache:interests",
     CACHE_KEY_REPORT_REASONS: "cache:reportReasons",
     CACHE_KEY_SEXUAL_ORIENTATIONS: "cache:sexualOrientations",
     CACHE_KEY_SMOKING_HABITS: "cache:smokingHabits",

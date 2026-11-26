@@ -32,7 +32,11 @@ const blindDateCreateSchema = Joi.object({
         ageMax: Joi.number().integer().min(18).max(99).default(99),
         languages: idList,
         musicGenres: idList,
-        lookingFor: idList
+        lookingFor: idList,
+        // Kultura: room kind (absent = legacy blind date = dating), language id and topic.
+        intent: Joi.string().valid('dating', 'language_exchange'),
+        language: Joi.string().trim().max(64).allow(null, ''),
+        topic: Joi.string().trim().max(80).allow(null, '')
     }).default({})
 }).messages({ 'any.invalid': c.CODE_MALFORMED_BAD_REQUEST });
 

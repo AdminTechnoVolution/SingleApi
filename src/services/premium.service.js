@@ -3,7 +3,7 @@ const SubscriptionRepository = require('../repository/subscription.repository');
 
 /**
  * Returns the user's currently active subscription (Google Play window,
- * Stripe or dLocal Go), or null. Single source of truth for premium-gated features.
+ * Stripe, dLocal Go or App Store), or null. Single source of truth for premium-gated features.
  */
 const findActiveSubscription = async (userId) => {
     // dLocal Go renewals are read back from its API once the stored period ends.

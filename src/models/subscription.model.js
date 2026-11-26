@@ -14,7 +14,7 @@ const paymentInfoSchema = new mongoose.Schema({
 
 const subscriptionSchema = new mongoose.Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  provider: { type: String, enum: ['google_play', 'stripe', 'dlocalgo'], default: 'google_play', index: true },
+  provider: { type: String, enum: ['google_play', 'stripe', 'dlocalgo', 'app_store'], default: 'google_play', index: true },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
   subscriptionId: { type: String, required: true },
@@ -28,6 +28,10 @@ const subscriptionSchema = new mongoose.Schema({
   externalPlanId: { type: String },
   /** dLocal Go: last time the subscription was re-read from the API (rate-limits lazy syncs). */
   lastSyncedAt: { type: Date },
+  /** App Store: StoreKit originalTransactionId (stable across renewals), appAccountToken and environment. */
+  originalTransactionId: { type: String },
+  appAccountToken: { type: String },
+  environment: { type: String },
   status: { type: String },
   currentPeriodStart: { type: Date },
   currentPeriodEnd: { type: Date },
@@ -39,6 +43,7 @@ const subscriptionSchema = new mongoose.Schema({
 
 subscriptionSchema.index({ purchaseToken: 1 }, { unique: true });
 subscriptionSchema.index({ externalSubscriptionId: 1 }, { unique: true, sparse: true });
+subscriptionSchema.index({ originalTransactionId: 1 }, { sparse: true });
 subscriptionSchema.index({ userId: 1, 'paymentInfo.fromDate': 1, 'paymentInfo.toDate': 1 });
 subscriptionSchema.index({ userId: 1, 'paymentInfo.fromDate': -1, 'paymentInfo.toDate': -1 });
 

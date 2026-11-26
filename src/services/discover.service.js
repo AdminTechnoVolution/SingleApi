@@ -8,6 +8,9 @@ const c = require('../../shared/util/constants.frontcodes');
 const constants = require('../../shared/util/constants');
 const jwtUtil = require('../../shared/util/jwt');
 const DiscoverOrder = require('../../shared/util/discoverOrder');
+const { hideDatingSignalsStages } = require('../../shared/util/profilePrivacy');
+const Intents = require('../../shared/util/intents');
+const Intent = require('../enums/EnumIntent');
 const limitGetUsersDiscover = Number(process.env.LIMIT_GET_USERS_DISCOVER);
 // Nearest N candidates that take part in a round (keeps the id scan bounded).
 const discoverMaxCandidates = Number(process.env.DISCOVER_MAX_CANDIDATES) || 1000;
@@ -21,21 +24,35 @@ const getUsersDiscover = async (req) => {
     const user = await UserRepository.findById(userId, exclussions, false);
     if (!user) throw new BusinessException(c.CODE_ERROR_USER_NOTFOUND);
 
+    // Kultura: ?intent= (iOS defaults to language_exchange). No intent = legacy dating feed, unchanged.
+    const requested = Intents.resolveRequestedIntent(queryParams.intent, req.headers);
+    if (requested.invalid) throw new BusinessException(c.CODE_INTENT_INVALID);
+    const intent = requested.intent;
+
     // Discover is the first screen after opening the app: its first page (no cursor)
     // marks the user's last activity. Fire-and-forget, throttled per user.
     if (!queryParams.cursor) UserActivity.recordActivity(userId);
 
+    // Dating results are only for users who turned on "Open to something more" (and have a dating profile).
+    if (intent === Intent.DATING && !canDiscoverDating(user)) {
+        return new BaseResponse(true, [], new BasePaginatedResponse([], { nextCursor: null, pageSize: 0, hasMore: false }));
+    }
+
+    const ranked = isRankedIntent(intent);
+
     // 1) Ids of every eligible candidate (cheap: _id only).
-    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true }));
-    const ids = candidates.map(u => u._id.toString());
+    const candidates = await UserRepository.findByPipeline(createPipeline(user, { idsOnly: true, intent }));
 
     // 2) Seeded random page: a new round (no cursor) = a new order.
-    const { pageIds, hasMore, nextCursor } = DiscoverOrder.pageOf(ids, queryParams.cursor, limitGetUsersDiscover);
+    //    Non-dating intents: ranked by language overlap, then interests, random among ties.
+    const { pageIds, hasMore, nextCursor } = ranked
+        ? DiscoverOrder.pageOfRanked(candidates.map(u => ({ id: u._id.toString(), languageScore: u.languageScore, interestScore: u.interestScore })), queryParams.cursor, limitGetUsersDiscover)
+        : DiscoverOrder.pageOf(candidates.map(u => u._id.toString()), queryParams.cursor, limitGetUsersDiscover);
 
     // 3) Full profiles for that page, returned in the shuffled order.
     let users = [];
     if (pageIds.length > 0) {
-        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds }), true);
+        const found = await UserRepository.findByPipeline(createPipeline(user, { pageIds, intent }), true);
         const byId = new Map(found.map(u => [u._id.toString(), u]));
         users = pageIds.map(id => byId.get(id)).filter(Boolean);
     }
@@ -51,7 +68,76 @@ const getUsersDiscover = async (req) => {
     return new BaseResponse(true, [], response);
 };
 
-const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
+const isRankedIntent = (intent) => Boolean(intent) && intent !== Intent.DATING;
+
+const canDiscoverDating = (meUser) =>
+    meUser?.profileConfig?.openToDating === true &&
+    Boolean(meUser.userInfo?.gender) &&
+    Array.isArray(meUser.preferences?.preferences) && meUser.preferences.preferences.length > 0;
+
+/** Mutual gender preferences (dating feed). $ifNull: profiles without dating fields never match. */
+const mutualGenderStage = (myGender, myPreferences) => ({
+    $match: {
+        $expr: {
+            $and: [
+                {
+                    $gt: [
+                        { $size: { $setIntersection: [{ $ifNull: ["$preferences.preferences", []] }, [myGender]] } },
+                        0
+                    ]
+                },
+                {
+                    $gt: [
+                        { $size: { $setIntersection: [["$userInfo.gender"], myPreferences || []] } },
+                        0
+                    ]
+                }
+            ]
+        }
+    }
+});
+
+/**
+ * Candidate filter per intent:
+ *  - legacy (null): everyone the old feed showed, minus users who explicitly turned
+ *    "Open to something more" off in the new app;
+ *  - dating: dating profiles only (intents incl. dating or legacy), not opted out;
+ *  - friends / language_exchange: users whose intents include it (dating-only users excluded).
+ */
+const intentMatchStage = (intent) => {
+    if (!intent) {
+        return { $match: { $nor: [{ 'profileConfig.openToDating': false, 'profileConfig.openToDatingUpdatedAt': { $exists: true } }] } };
+    }
+    if (intent === Intent.DATING) {
+        return {
+            $match: {
+                'profileConfig.openToDating': { $ne: false },
+                $or: [
+                    { 'preferences.intents': Intent.DATING },
+                    { 'preferences.intents': { $exists: false } },
+                    { 'preferences.intents': { $size: 0 } }
+                ]
+            }
+        };
+    }
+    return { $match: { 'preferences.intents': intent } };
+};
+
+/** Language overlap (what I learn ↔ what they speak, both ways), then interests overlap. */
+const scoreStage = (meUser) => {
+    const myLanguages = (meUser.userInfo?.languages || []).map(String);
+    const myLearning = (meUser.userInfo?.learningLanguages || []).map(String);
+    const myInterests = (meUser.userInfo?.interests || []).map(String);
+    const overlap = (field, mine) => ({ $size: { $setIntersection: [{ $ifNull: [field, []] }, mine] } });
+    return {
+        $addFields: {
+            languageScore: { $add: [overlap("$userInfo.languages", myLearning), overlap("$userInfo.learningLanguages", myLanguages)] },
+            interestScore: overlap("$userInfo.interests", myInterests)
+        }
+    };
+};
+
+const createPipeline = (meUser, { idsOnly = false, pageIds = null, intent = null } = {}) => {
     // Precompute my data
     const myGender = meUser.userInfo?.gender;
     const myPreferences = meUser.preferences?.preferences;
@@ -220,27 +306,24 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
         pipeline.push({ $match: { 'userInfo.age': ageMatch } });
     }
 
-    // Preferences compatibility
-    pipeline.push({
-        $match: {
-            $expr: {
-                $and: [
-                    {
-                        $gt: [
-                            { $size: { $setIntersection: ["$preferences.preferences", [myGender]] } },
-                            0
-                        ]
-                    },
-                    {
-                        $gt: [
-                            { $size: { $setIntersection: [["$userInfo.gender"], myPreferences] } },
-                            0
-                        ]
-                    }
-                ]
-            }
-        }
-    });
+    // Intent compatibility
+    pipeline.push(intentMatchStage(intent));
+
+    // Preferences compatibility (mutual gender): only for the dating feed (legacy or intent=dating)
+    if (!isRankedIntent(intent)) {
+        pipeline.push(mutualGenderStage(myGender, myPreferences));
+    }
+
+    if (idsOnly && isRankedIntent(intent)) {
+        // Best language/interest matches first, then nearest; random order inside a rank is applied per round.
+        pipeline.push(
+            scoreStage(meUser),
+            { $sort: { languageScore: -1, interestScore: -1, distance: 1, _id: 1 } },
+            { $limit: discoverMaxCandidates },
+            { $project: { _id: 1, languageScore: 1, interestScore: 1 } }
+        );
+        return pipeline;
+    }
 
     if (idsOnly) {
         // $geoNear output is distance-sorted: keep the nearest candidates.
@@ -268,7 +351,10 @@ const createPipeline = (meUser, { idsOnly = false, pageIds = null } = {}) => {
         }
     });
 
+    // Kultura: never reveal whether a candidate is open to dating.
+    pipeline.push(...hideDatingSignalsStages());
+
     return pipeline;
 };
 
-module.exports = { getUsersDiscover };
+module.exports = { getUsersDiscover, createPipeline, canDiscoverDating };

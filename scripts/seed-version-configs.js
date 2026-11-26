@@ -5,6 +5,8 @@
  *   ANDROID_MIN_VERSION_CODE                 0  → no forced update (raise to block old builds)
  *   ANDROID_LATEST_VERSION_CODE            107  → newer builds show a soft "update available"
  *   ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE 107 → first build that shows quick messages
+ *   IOS_MIN_VERSION_CODE                     0  → iOS (Kultura) builds below this must update (CFBundleVersion)
+ *   IOS_LATEST_VERSION_CODE                  0  → latest iOS build on the App Store (0 = no soft prompt)
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -14,6 +16,8 @@ const entries = [
     { key: 'ANDROID_MIN_VERSION_CODE', value: 0, description: 'Android builds below this versionCode must update (0 = disabled).' },
     { key: 'ANDROID_LATEST_VERSION_CODE', value: 107, description: 'Latest Android versionCode on Play; older builds get a soft update prompt (0 = disabled).' },
     { key: 'ANDROID_QUICK_MESSAGES_MIN_VERSION_CODE', value: 107, description: 'First Android versionCode that displays quick messages; older apps get a like push instead.' },
+    { key: 'IOS_MIN_VERSION_CODE', value: 0, description: 'iOS builds (CFBundleVersion integer) below this must update (0 = disabled).' },
+    { key: 'IOS_LATEST_VERSION_CODE', value: 0, description: 'Latest iOS build on the App Store; older builds get a soft update prompt (0 = disabled).' },
     { key: 'WEB_MIN_VERSION_CODE', value: 0, description: 'PWA builds below this must reload/update (0 = disabled).' },
     { key: 'WEB_LATEST_VERSION_CODE', value: 200, description: 'Latest PWA build number.' },
     { key: 'WEB_QUICK_MESSAGES_MIN_VERSION_CODE', value: 200, description: 'First PWA build that displays quick messages; older builds get a like push instead.' },

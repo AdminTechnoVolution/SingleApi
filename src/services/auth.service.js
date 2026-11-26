@@ -20,6 +20,7 @@ const jwt = require('../../shared/util/jwt');
 const redisClient = require('../../shared/config/redis');
 const bcrypt = require('bcryptjs');
 const googleClient = require('../client/googlePay.client');
+const appleClient = require('../client/apple.client');
 const FCMToken = require('../models/fcmToken.model');
 const FCMTokenRepository = require('../repository/fcmToken.repository');
 const UserRepository = require('../repository/user.repository');
@@ -91,6 +92,8 @@ const refreshTokenUser = async (req) => {
 const loginUser = async (req) => {
     let { email, password, socialToken, authMethod, fcmToken } = req.body;
     const platform = req.body.platform || Platform.ANDROID;
+    if (!password && authMethod === AuthType.APPLE) return loginApple(req, platform);
+
     const user = await UserRepository.findOneByFilter({ email: email });
 
     if (!user || user.status !== constants.STATUS_DESC_ACTIVE) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
@@ -113,6 +116,39 @@ const loginUser = async (req) => {
         }
     }
 
+    return issueSession(user, platform, fcmToken);
+};
+
+/**
+ * Sign in with Apple. The user is found by the Apple subject (stable across logins),
+ * else by the email inside the verified token (an existing account is then linked).
+ * The body email is never trusted for Apple. Unknown users get ERROR_LOGIN 401
+ * (same as Google): the app continues to registration.
+ */
+const findAppleUser = async (appleIdentity, repo = UserRepository) => {
+    const bySubject = await repo.findOneByFilter({ 'auth.method': AuthType.APPLE, 'auth.socialId': appleIdentity.socialId });
+    if (bySubject) return bySubject;
+    if (!appleIdentity.email || !appleIdentity.isVerified) return null;
+    return repo.findOneByFilter({ email: appleIdentity.email });
+};
+
+const loginApple = async (req, platform) => {
+    const { socialToken, fcmToken } = req.body;
+    const appleIdentity = await appleClient.verifyIdentityToken(socialToken);
+    logger.info({ message: `Apple login for subject ${appleIdentity.socialId}`, className: filename, req: req });
+
+    const user = await findAppleUser(appleIdentity);
+    if (!user || user.status !== constants.STATUS_DESC_ACTIVE) throw new BusinessException(c.CODE_ERROR_LOGIN, 401);
+
+    if (!user.auth || !user.auth.method || !user.auth.socialId) {
+        user.auth = { method: AuthType.APPLE, socialId: appleIdentity.socialId, isVerified: appleIdentity.isVerified };
+        await UserRepository.save(user);
+    }
+
+    return issueSession(user, platform, fcmToken);
+};
+
+const issueSession = async (user, platform, fcmToken) => {
     if (user.platform !== platform) {
         user.platform = platform;
         await UserRepository.save(user);
@@ -283,4 +319,4 @@ async function verifySocialToken(socialToken, authMethod, user, req) {
     return socialResponse;
 }
 
-module.exports = { loginUser, refreshTokenUser, logoutUser, sendPasswordResetCode, verifyResetCode };
+module.exports = { loginUser, refreshTokenUser, logoutUser, sendPasswordResetCode, verifyResetCode, findAppleUser };

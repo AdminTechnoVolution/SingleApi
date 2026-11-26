@@ -41,18 +41,21 @@ const sendQuickMessage = async (req) => {
     await QuickMessageRepository.save(new QuickMessage({ fromUserId: userId, toUserId, content }));
 
     // Quick message implies a like (premium: no daily limit applies).
+    const { intent } = require('../../shared/util/intents').resolveRequestedIntent(req.body.intent, req.headers);
     const existingLike = await LikeRepository.findByAnyFilter({ fromUserId: userId, toUserId });
     if (!existingLike.length) {
-        await LikeRepository.save(new Likes({ fromUserId: userId, toUserId }));
+        await LikeRepository.save(new Likes({ fromUserId: userId, toUserId, ...(intent ? { intent } : {}) }));
     }
     // Like and dislike are exclusive: the latest action wins.
     await DislikesRepository.deleteManyByFilter({ fromUserId: new ObjectId(userId), toUserId: new ObjectId(toUserId) });
 
-    const isMatch = await LikesService.validateIsMatch({ toUserId }, userId);
+    const reciprocal = await LikeRepository.findByAnyFilter({ fromUserId: toUserId, toUserId: userId });
+    const isMatch = Array.isArray(reciprocal) && reciprocal.length > 0;
     let data = { isMatch };
     if (isMatch) {
+        const matchIntent = require('../../shared/util/intents').resolveMatchIntent(intent ?? existingLike[0]?.intent, reciprocal[0].intent);
         // matchTasks moves this quick message into the new chat.
-        data = await LikesService.matchTasks(userId, { toUserId }, data);
+        data = await LikesService.matchTasks(userId, { toUserId, intent: matchIntent }, data);
     } else {
         await notifyRecipient(userId, toUserId);
     }

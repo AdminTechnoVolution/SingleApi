@@ -1,0 +1,962 @@
+[
+    {
+        "_id": "1",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Travel"
+            },
+            {
+                "iso6391": "es",
+                "name": "Viajes"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Voyages"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Viagens"
+            },
+            {
+                "iso6391": "it",
+                "name": "Viaggi"
+            },
+            {
+                "iso6391": "de",
+                "name": "Reisen"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "2",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Music"
+            },
+            {
+                "iso6391": "es",
+                "name": "Música"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Musique"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Música"
+            },
+            {
+                "iso6391": "it",
+                "name": "Musica"
+            },
+            {
+                "iso6391": "de",
+                "name": "Musik"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "3",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Movies & series"
+            },
+            {
+                "iso6391": "es",
+                "name": "Cine y series"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Films et séries"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Filmes e séries"
+            },
+            {
+                "iso6391": "it",
+                "name": "Film e serie"
+            },
+            {
+                "iso6391": "de",
+                "name": "Filme & Serien"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "4",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Books & literature"
+            },
+            {
+                "iso6391": "es",
+                "name": "Libros y literatura"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Livres et littérature"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Livros e literatura"
+            },
+            {
+                "iso6391": "it",
+                "name": "Libri e letteratura"
+            },
+            {
+                "iso6391": "de",
+                "name": "Bücher & Literatur"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "5",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Cooking & food"
+            },
+            {
+                "iso6391": "es",
+                "name": "Cocina y gastronomía"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Cuisine et gastronomie"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Culinária e gastronomia"
+            },
+            {
+                "iso6391": "it",
+                "name": "Cucina e gastronomia"
+            },
+            {
+                "iso6391": "de",
+                "name": "Kochen & Essen"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "6",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "History"
+            },
+            {
+                "iso6391": "es",
+                "name": "Historia"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Histoire"
+            },
+            {
+                "iso6391": "pt",
+                "name": "História"
+            },
+            {
+                "iso6391": "it",
+                "name": "Storia"
+            },
+            {
+                "iso6391": "de",
+                "name": "Geschichte"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "7",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Art & museums"
+            },
+            {
+                "iso6391": "es",
+                "name": "Arte y museos"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Art et musées"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Arte e museus"
+            },
+            {
+                "iso6391": "it",
+                "name": "Arte e musei"
+            },
+            {
+                "iso6391": "de",
+                "name": "Kunst & Museen"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "8",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Photography"
+            },
+            {
+                "iso6391": "es",
+                "name": "Fotografía"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Photographie"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Fotografia"
+            },
+            {
+                "iso6391": "it",
+                "name": "Fotografia"
+            },
+            {
+                "iso6391": "de",
+                "name": "Fotografie"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "9",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Sports"
+            },
+            {
+                "iso6391": "es",
+                "name": "Deportes"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Sport"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Esportes"
+            },
+            {
+                "iso6391": "it",
+                "name": "Sport"
+            },
+            {
+                "iso6391": "de",
+                "name": "Sport"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "10",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Football"
+            },
+            {
+                "iso6391": "es",
+                "name": "Fútbol"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Football"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Futebol"
+            },
+            {
+                "iso6391": "it",
+                "name": "Calcio"
+            },
+            {
+                "iso6391": "de",
+                "name": "Fußball"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "11",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Hiking & nature"
+            },
+            {
+                "iso6391": "es",
+                "name": "Senderismo y naturaleza"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Randonnée et nature"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Trilhas e natureza"
+            },
+            {
+                "iso6391": "it",
+                "name": "Escursionismo e natura"
+            },
+            {
+                "iso6391": "de",
+                "name": "Wandern & Natur"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "12",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Technology"
+            },
+            {
+                "iso6391": "es",
+                "name": "Tecnología"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Technologie"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Tecnologia"
+            },
+            {
+                "iso6391": "it",
+                "name": "Tecnologia"
+            },
+            {
+                "iso6391": "de",
+                "name": "Technologie"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "13",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Video games"
+            },
+            {
+                "iso6391": "es",
+                "name": "Videojuegos"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Jeux vidéo"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Videogames"
+            },
+            {
+                "iso6391": "it",
+                "name": "Videogiochi"
+            },
+            {
+                "iso6391": "de",
+                "name": "Videospiele"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "14",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Anime & manga"
+            },
+            {
+                "iso6391": "es",
+                "name": "Anime y manga"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Anime et manga"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Anime e mangá"
+            },
+            {
+                "iso6391": "it",
+                "name": "Anime e manga"
+            },
+            {
+                "iso6391": "de",
+                "name": "Anime & Manga"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "15",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Science"
+            },
+            {
+                "iso6391": "es",
+                "name": "Ciencia"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Science"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Ciência"
+            },
+            {
+                "iso6391": "it",
+                "name": "Scienza"
+            },
+            {
+                "iso6391": "de",
+                "name": "Wissenschaft"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "16",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Philosophy"
+            },
+            {
+                "iso6391": "es",
+                "name": "Filosofía"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Philosophie"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Filosofia"
+            },
+            {
+                "iso6391": "it",
+                "name": "Filosofia"
+            },
+            {
+                "iso6391": "de",
+                "name": "Philosophie"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "17",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Languages & linguistics"
+            },
+            {
+                "iso6391": "es",
+                "name": "Idiomas y lingüística"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Langues et linguistique"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Idiomas e linguística"
+            },
+            {
+                "iso6391": "it",
+                "name": "Lingue e linguistica"
+            },
+            {
+                "iso6391": "de",
+                "name": "Sprachen & Linguistik"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "18",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Culture & traditions"
+            },
+            {
+                "iso6391": "es",
+                "name": "Cultura y tradiciones"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Culture et traditions"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Cultura e tradições"
+            },
+            {
+                "iso6391": "it",
+                "name": "Cultura e tradizioni"
+            },
+            {
+                "iso6391": "de",
+                "name": "Kultur & Traditionen"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "19",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Festivals & holidays"
+            },
+            {
+                "iso6391": "es",
+                "name": "Festivales y celebraciones"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Festivals et fêtes"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Festivais e celebrações"
+            },
+            {
+                "iso6391": "it",
+                "name": "Festival e feste"
+            },
+            {
+                "iso6391": "de",
+                "name": "Feste & Feiertage"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "20",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Dance"
+            },
+            {
+                "iso6391": "es",
+                "name": "Baile"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Danse"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Dança"
+            },
+            {
+                "iso6391": "it",
+                "name": "Danza"
+            },
+            {
+                "iso6391": "de",
+                "name": "Tanzen"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "21",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Theatre"
+            },
+            {
+                "iso6391": "es",
+                "name": "Teatro"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Théâtre"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Teatro"
+            },
+            {
+                "iso6391": "it",
+                "name": "Teatro"
+            },
+            {
+                "iso6391": "de",
+                "name": "Theater"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "22",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Fashion"
+            },
+            {
+                "iso6391": "es",
+                "name": "Moda"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Mode"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Moda"
+            },
+            {
+                "iso6391": "it",
+                "name": "Moda"
+            },
+            {
+                "iso6391": "de",
+                "name": "Mode"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "23",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Fitness"
+            },
+            {
+                "iso6391": "es",
+                "name": "Fitness"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Fitness"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Fitness"
+            },
+            {
+                "iso6391": "it",
+                "name": "Fitness"
+            },
+            {
+                "iso6391": "de",
+                "name": "Fitness"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "24",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Yoga & meditation"
+            },
+            {
+                "iso6391": "es",
+                "name": "Yoga y meditación"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Yoga et méditation"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Ioga e meditação"
+            },
+            {
+                "iso6391": "it",
+                "name": "Yoga e meditazione"
+            },
+            {
+                "iso6391": "de",
+                "name": "Yoga & Meditation"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "25",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Volunteering"
+            },
+            {
+                "iso6391": "es",
+                "name": "Voluntariado"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Bénévolat"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Voluntariado"
+            },
+            {
+                "iso6391": "it",
+                "name": "Volontariato"
+            },
+            {
+                "iso6391": "de",
+                "name": "Ehrenamt"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "26",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Entrepreneurship"
+            },
+            {
+                "iso6391": "es",
+                "name": "Emprendimiento"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Entrepreneuriat"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Empreendedorismo"
+            },
+            {
+                "iso6391": "it",
+                "name": "Imprenditoria"
+            },
+            {
+                "iso6391": "de",
+                "name": "Unternehmertum"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "27",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Studying abroad"
+            },
+            {
+                "iso6391": "es",
+                "name": "Estudiar en el extranjero"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Études à l'étranger"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Estudar no exterior"
+            },
+            {
+                "iso6391": "it",
+                "name": "Studiare all'estero"
+            },
+            {
+                "iso6391": "de",
+                "name": "Auslandsstudium"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "28",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Pets & animals"
+            },
+            {
+                "iso6391": "es",
+                "name": "Mascotas y animales"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Animaux"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Pets e animais"
+            },
+            {
+                "iso6391": "it",
+                "name": "Animali domestici"
+            },
+            {
+                "iso6391": "de",
+                "name": "Haustiere & Tiere"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "29",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Board games"
+            },
+            {
+                "iso6391": "es",
+                "name": "Juegos de mesa"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Jeux de société"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Jogos de tabuleiro"
+            },
+            {
+                "iso6391": "it",
+                "name": "Giochi da tavolo"
+            },
+            {
+                "iso6391": "de",
+                "name": "Brettspiele"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "30",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Podcasts"
+            },
+            {
+                "iso6391": "es",
+                "name": "Pódcasts"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Podcasts"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Podcasts"
+            },
+            {
+                "iso6391": "it",
+                "name": "Podcast"
+            },
+            {
+                "iso6391": "de",
+                "name": "Podcasts"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "31",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Environment"
+            },
+            {
+                "iso6391": "es",
+                "name": "Medio ambiente"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Environnement"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Meio ambiente"
+            },
+            {
+                "iso6391": "it",
+                "name": "Ambiente"
+            },
+            {
+                "iso6391": "de",
+                "name": "Umwelt"
+            }
+        ],
+        "status": "A"
+    },
+    {
+        "_id": "32",
+        "language": [
+            {
+                "iso6391": "en",
+                "name": "Coffee & tea"
+            },
+            {
+                "iso6391": "es",
+                "name": "Café y té"
+            },
+            {
+                "iso6391": "fr",
+                "name": "Café et thé"
+            },
+            {
+                "iso6391": "pt",
+                "name": "Café e chá"
+            },
+            {
+                "iso6391": "it",
+                "name": "Caffè e tè"
+            },
+            {
+                "iso6391": "de",
+                "name": "Kaffee & Tee"
+            }
+        ],
+        "status": "A"
+    }
+]

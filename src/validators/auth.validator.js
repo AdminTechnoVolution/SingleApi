@@ -92,7 +92,10 @@ const logoutSchema = Joi.object({
  *           example: eyJhbGciOi...
 */
 const loginSchema = Joi.object({
-    email: Joi.string().trim().max(256).email().required()
+    // Sign in with Apple may omit the email (Apple only shares it with the app on the first
+    // authorization); the verified identity token identifies the user instead.
+    email: Joi.string().trim().max(256).email()
+        .when('authMethod', { is: 'apple', then: Joi.optional(), otherwise: Joi.required() })
         .messages({
             'any.required': c.CODE_EMAIL_REQUIRED,
             'string.empty': c.CODE_EMAIL_REQUIRED,

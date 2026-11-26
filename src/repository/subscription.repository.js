@@ -32,12 +32,12 @@ const findOneAndUpdate = async (filter, update) => {
     }
 };
 
-/** Active web subscription (Stripe legacy or dLocal Go): status active and period not over. */
+/** Active status-based subscription (Stripe legacy, dLocal Go or App Store): status active and period not over. */
 const findActiveStripeForUser = async (userId) => {
     const now = new Date();
     return Subscription.findOne({
         userId,
-        provider: { $in: ['stripe', 'dlocalgo'] },
+        provider: { $in: ['stripe', 'dlocalgo', 'app_store'] },
         status: { $in: ['active', 'trialing'] },
         currentPeriodEnd: { $gt: now }
     }).sort({ currentPeriodEnd: -1 });

@@ -7,18 +7,27 @@ const EnumPaymentState = require('../enums/EnumPaymentState');
 const google = require('googleapis').google;
 const { OAuth2Client } = require('google-auth-library');
 const c = require('../../shared/util/constants.frontcodes');
-const googleServiceAccountBase64 = process.env.GOOGLE_SERVICE_ACCOUNT;
-const googleServiceAccountBase64Decoded = Buffer.from(googleServiceAccountBase64, "base64").toString("utf8");
-const googleServiceAccount = JSON.parse(googleServiceAccountBase64Decoded);
-const googleServiceScopes = process.env.GOOGLE_SERVICE_SCOPES;
-
-const googleClientIdBase64 = process.env.GOOGLE_CLIENT_ID;
-const googleClientIdDecoded = Buffer.from(googleClientIdBase64, "base64").toString("utf8");
-const googleClient = new OAuth2Client(googleClientIdDecoded);
+// Credentials are decoded on first use (not at require time), so modules that only
+// import this client (and unit tests) load without the Google env vars.
+let googleConfig;
+const getGoogleConfig = () => {
+    if (!googleConfig) {
+        const googleServiceAccount = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT, "base64").toString("utf8"));
+        const googleClientIdDecoded = Buffer.from(process.env.GOOGLE_CLIENT_ID, "base64").toString("utf8");
+        googleConfig = {
+            googleServiceAccount,
+            googleServiceScopes: process.env.GOOGLE_SERVICE_SCOPES,
+            googleClientIdDecoded,
+            googleClient: new OAuth2Client(googleClientIdDecoded)
+        };
+    }
+    return googleConfig;
+};
 
 async function verifySubscription(req, purchaseToken, subscriptionId, packageName) {
     try {
         logger.info({ message: `Verifying Google Purchase Subscription`, className: filename, req: req });
+        const { googleServiceAccount, googleServiceScopes } = getGoogleConfig();
 
         const auth = new google.auth.GoogleAuth({
             credentials: googleServiceAccount,
@@ -79,6 +88,7 @@ function isActiveSubscriptionV2(subscriptionDB) {
 async function loginGoogle(req, socialToken) {
     try {
         logger.info({ message: `Verifying Google Auth Client`, className: filename, req: req });
+        const { googleClient, googleClientIdDecoded } = getGoogleConfig();
 
         const ticket = await googleClient.verifyIdToken({
             idToken: socialToken,
@@ -101,6 +111,7 @@ async function loginGoogle(req, socialToken) {
 
 /** Stops a Google Play subscription from renewing (the paid period is kept). Throws on failure. */
 async function cancelSubscription(purchaseToken, subscriptionId, packageName) {
+    const { googleServiceAccount, googleServiceScopes } = getGoogleConfig();
     const auth = new google.auth.GoogleAuth({
         credentials: googleServiceAccount,
         scopes: googleServiceScopes.split(',')
