@@ -11,6 +11,8 @@ const conversationSchema = new Schema({
     chatId: { type: Schema.Types.ObjectId, ref: "Chat" },
     sender: { type: Schema.Types.ObjectId, ref: "User" },
     content: String,
+    // 'nudge' = MSN-style buzz (zumbido); absent on old documents means 'text'.
+    type: { type: String, enum: ['text', 'nudge'], default: 'text' },
     messageId: { type: Schema.Types.ObjectId, ref: "Conversation" },
     attachments: [String],
     reactions: [reactionSchema],

@@ -11,6 +11,8 @@ module.exports = {
     CODE_BIRTHDATE_REQUIRED: "birthdate.required",
     CODE_BIRTHDATE_VALID: "birthdate.valid",
     CODE_CHAT_NOT_FOUND: "chat.notFound",
+    CODE_NUDGE_COOLDOWN: "nudge.cooldown",
+    CODE_NUDGE_NOT_EDITABLE: "nudge.notEditable",
     CODE_IS_NOT_ADULT: "birthdate.isNotAdult",
     CODE_CITY_REQUIRED: "city.required",
     CODE_CHATID_REQUIRED: "chatId.required",

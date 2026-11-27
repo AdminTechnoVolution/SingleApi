@@ -80,6 +80,15 @@ const chatSendMessageSchema = Joi.object({
         })
 });
 
+/** sendNudge payload: only the chat; content is fixed server side. */
+const chatSendNudgeSchema = Joi.object({
+    chatId: Joi.string().required()
+        .messages({
+            'any.required': c.CODE_CHATID_REQUIRED,
+            'string.empty': c.CODE_CHATID_REQUIRED
+        })
+});
+
 /**
  * @swagger
  * components:
@@ -105,5 +114,6 @@ const openChatSchema = Joi.object({
 module.exports = {
     chatUpdateMessageSchema,
     chatSendMessageSchema,
+    chatSendNudgeSchema,
     openChatSchema
 };

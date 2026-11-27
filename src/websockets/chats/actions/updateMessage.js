@@ -28,6 +28,11 @@ module.exports = (socket, namespace) => {
 
             if (match.status !== MatchStatus.MATCHED) return;
 
+            if (conversation.type === constants.CONVERSATION_TYPE_NUDGE) {
+                socket.emit(constants.WS_EVENT_UPDATE_MESSAGE, JSON.stringify(new BaseResponse(false, [c.CODE_NUDGE_NOT_EDITABLE])));
+                return;
+            }
+
             conversation.content = payload.content;
             conversation.updated = true;
 

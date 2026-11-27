@@ -55,6 +55,10 @@ async function getDataForNotification(event, data) {
             title = data.data.fullName;
             body = data.data.content;
             break;
+        case constants.WS_EVENT_NEW_NUDGE:
+            title = data.data.fullName;
+            body = 'sent you a nudge ⚡️';
+            break;
         case constants.WS_EVENT_NEW_LIKE:
             title = 'New like';
             body = "You've got a new like!";

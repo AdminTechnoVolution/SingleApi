@@ -23,6 +23,16 @@ const findOneByFilter = async (filter) => {
     }
 }
 
+/** Most recent conversation matching the filter (by created_at), or null. */
+const findLatestByFilter = async (filter) => {
+    try {
+        return await Conversation.findOne(filter).sort({ created_at: -1 });
+    } catch (err) {
+        logger.error(`Error in findLatestByFilter. Error: ${err}`, { className: filename });
+        throw new DataLayerException(c.CODE_INTERNAL_SERVER_ERROR);
+    }
+}
+
 async function save(conversation) {
     try {
         return await conversation.save();
@@ -50,4 +60,4 @@ const deleteManyByFilter = async (filter) => {
     }
 }
 
-module.exports = { save, updateMany, findByPipeline, findOneByFilter, deleteManyByFilter };
+module.exports = { save, updateMany, findByPipeline, findOneByFilter, findLatestByFilter, deleteManyByFilter };

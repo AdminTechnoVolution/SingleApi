@@ -17,11 +17,15 @@ const SUPPORTED_LANGS = ['es', 'en'];
 // profileConfig.preferredLanguage references the master 'languages' collection (scripts/data.languages.json).
 const LANGUAGE_ID_TO_ISO = { '1': 'en', '3': 'es' };
 const MAX_BODY_CHARS = 180;
+// Bundled in the iOS app (Kultura/Resources/nudge.caf); APNs falls back to the default sound if missing.
+const NUDGE_SOUND = 'nudge.caf';
 
 const COPY = {
     es: {
         newMessageTitle: 'Nuevo mensaje',
         newMessageBody: 'Tienes un nuevo mensaje',
+        newNudgeTitle: 'Zumbido ⚡️',
+        newNudgeBody: (name) => name ? `${name} te envió un zumbido ⚡️` : 'Te enviaron un zumbido ⚡️',
         newLikeTitle: 'Alguien te saludó 👋',
         newLikeBody: 'Abre Kultura para devolver el saludo',
         newQuickMessageTitle: 'Nuevo mensaje rápido',
@@ -40,6 +44,8 @@ const COPY = {
     en: {
         newMessageTitle: 'New message',
         newMessageBody: 'You have a new message',
+        newNudgeTitle: 'Nudge ⚡️',
+        newNudgeBody: (name) => name ? `${name} sent you a nudge ⚡️` : 'You got a nudge ⚡️',
         newLikeTitle: 'Someone said hi 👋',
         newLikeBody: 'Open Kultura to say hi back',
         newQuickMessageTitle: 'New quick message',
@@ -86,6 +92,14 @@ function alertFor(type, data, lang) {
                 title: str(data.fullName) || t.newMessageTitle,
                 body: truncate(data.content) || t.newMessageBody,
                 threadId: str(data.chatId)
+            };
+        case constants.WS_EVENT_NEW_NUDGE:
+            return {
+                title: str(data.fullName) || t.newNudgeTitle,
+                body: t.newNudgeBody(firstName(data.fullName)),
+                threadId: str(data.chatId),
+                sound: NUDGE_SOUND,
+                timeSensitive: true
             };
         case constants.WS_EVENT_NEW_LIKE:
             return { title: t.newLikeTitle, body: t.newLikeBody, threadId: 'greetings' };
@@ -140,7 +154,7 @@ function buildApnsConfig(type, data = {}, recipientLang = DEFAULT_LANG, { ttlSec
 
     const aps = {
         alert: { title: alert.title, body: alert.body },
-        sound: 'default',
+        sound: alert.sound || 'default',
         'mutable-content': 1
     };
     if (alert.threadId) aps['thread-id'] = alert.threadId;
