@@ -41,6 +41,12 @@ class AzureUploader {
         );
     }
 
+    /** Base URL of the container, with a trailing slash. Blob URLs start with it. */
+    get containerUrl() {
+        const url = this.containerClient.url;
+        return url.endsWith('/') ? url : url + '/';
+    }
+
     async deleteOne(blobName) {
         const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
         await blockBlobClient.deleteIfExists();
@@ -57,6 +63,7 @@ class AzureUploader {
         const lower = filename.toLowerCase();
         if (lower.endsWith('.png')) return 'image/png';
         if (lower.endsWith('.webp')) return 'image/webp';
+        if (lower.endsWith('.m4a')) return 'audio/mp4';
         return 'image/jpeg';
     }
 }

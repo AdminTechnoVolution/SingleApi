@@ -4,6 +4,8 @@ const { chatSendMessageSchema } = require('../validators/chat.validator');
 const validateBody = require('../../shared/middlewares/validateBody');
 const validateToken = require('../../shared/middlewares/validateToken');
 const ChatController = require('../controllers/chat.controller');
+const uploadAudio = require('../../shared/config/multerAudioConfig');
+const requestLogger = require('../../shared/middlewares/requestLogger');
 
 /**
  * @swagger
@@ -155,5 +157,45 @@ router.delete('/chats/:chatId/conversations', validateToken, ChatController.dele
  *               $ref: '#/components/schemas/BaseResponse'
  */
 router.get('/chats/:chatId/conversations', validateToken, ChatController.getChatConversations);
+
+/**
+ * @swagger
+ * /api/chats/{chatId}/audio:
+ *   post:
+ *     summary: Upload a voice note (m4a, max 2 MB / 60 s). Returns { url, durationMs }; then send it with socket sendMessage type 'audio'.
+ *     tags:
+ *       - Chats
+ *     security:
+ *       - Bearer: []
+ *     parameters:
+ *       - in: path
+ *         name: chatId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               audio:
+ *                 type: string
+ *                 format: binary
+ *               durationMs:
+ *                 type: integer
+ *                 example: 4200
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BaseResponse'
+ *       400:
+ *         description: Bad Request (audio.required, audio.onlyAudio, LIMIT_FILE_SIZE, chat.notFound)
+ */
+router.post('/chats/:chatId/audio', validateToken, uploadAudio.single('audio'), requestLogger, ChatController.uploadChatAudio);
 
 module.exports = router;

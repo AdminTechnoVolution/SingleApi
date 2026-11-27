@@ -6,6 +6,10 @@ const c = require('../../shared/util/constants.frontcodes');
 const ChatRepository = require('../repository/chat.repository');
 const ConversationRepository = require('../repository/conversation.repository');
 const MatchStatus = require('../enums/EnumMatchStatus');
+const MatchRepository = require('../repository/match.repository');
+const { randomUUID } = require('crypto');
+const { getChatAudioUploader } = require('../../shared/util/chatAudioStorage');
+const { clampDurationMs, voiceNoteBlobPath } = require('../../shared/util/voiceNote');
 const jwtUtil = require('../../shared/util/jwt');
 const limitGetChats = Number(process.env.LIMIT_GET_CHATS);
 const limitGetConversations = Number(process.env.LIMIT_GET_CONVERSATIONS);
@@ -103,6 +107,32 @@ const mapLastMessageWhenDeleted = async (chats, userId) => {
     return chats;
 };
 
+/**
+ * POST /api/chats/:chatId/audio — stores a voice note blob and returns its URL.
+ * The message itself is sent afterwards over the socket (sendMessage with type 'audio').
+ */
+const uploadChatAudio = async (req) => {
+    const { chatId } = req.params;
+    const auth = req.headers['authorization'];
+    const userId = jwtUtil.getValueFromJwtToken(auth, 'id');
+
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+        throw new BusinessException(c.CODE_AUDIO_REQUIRED);
+    }
+
+    await validateUserInChat(chatId, userId);
+    const match = await MatchRepository.findOneByFilter({ _id: chatId });
+    if (!match) throw new BusinessException(c.CODE_MATCH_NOT_FOUND);
+    if (match.status !== MatchStatus.MATCHED) throw new BusinessException(c.CODE_CHAT_NOT_FOUND);
+
+    const uploaded = await getChatAudioUploader().uploadOne(voiceNoteBlobPath(chatId), `${randomUUID()}.m4a`, req.file.buffer);
+
+    return new BaseResponse(true, [], {
+        url: uploaded.url,
+        durationMs: clampDurationMs(req.body?.durationMs)
+    });
+};
+
 const createPipelineConversations = async (chat, userId, cursor) => {
     const pipeline = [];
     const cursorObjectId = cursor ? new ObjectId(cursor) : null;
@@ -193,4 +223,4 @@ const validateUserInChat = async (chatId, userId) => {
     return chatExists;
 }
 
-module.exports = { getChats, messageSeen, getChatConversations, deleteChatConversation, createPipeline };
+module.exports = { getChats, messageSeen, getChatConversations, deleteChatConversation, uploadChatAudio, createPipeline };

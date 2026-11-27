@@ -1,3 +1,6 @@
+const path = require('path');
+const logger = require('../../../../shared/config/logger');
+const filename = path.basename(__filename);
 const util = require('../../../../shared/util/util');
 const BaseResponse = require('../../../../shared/util/baseResponse');
 const c = require('../../../../shared/util/constants.frontcodes');
@@ -10,6 +13,8 @@ const ConversationRepository = require('../../../repository/conversation.reposit
 const MatchRepository = require('../../../repository/match.repository');
 const UserRepository = require('../../../repository/user.repository');
 const Conversation = require('../../../models/conversation.model');
+const { getChatAudioUploader } = require('../../../../shared/util/chatAudioStorage');
+const { clampDurationMs, isOwnVoiceNoteUrl } = require('../../../../shared/util/voiceNote');
 
 module.exports = (socket, namespace) => {
     socket.on('sendMessage', async (payload) => {
@@ -25,18 +30,32 @@ module.exports = (socket, namespace) => {
 
             if (match.status !== MatchStatus.MATCHED) return;
 
+            const isAudio = payload.type === constants.CONVERSATION_TYPE_AUDIO;
+            if (isAudio && !isOwnVoiceNoteUrl(payload.attachments[0], getChatAudioUploader().containerUrl, payload.chatId)) {
+                const response = new BaseResponse(false, [c.CODE_AUDIO_URL_INVALID]);
+                return socket.emit(constants.WS_EVENT_SEND_MESSAGE, JSON.stringify(response));
+            }
+            // Old clients / Android show `content` as text, so a voice note carries a fixed label.
+            const content = isAudio ? constants.AUDIO_CONTENT : payload.content;
+            const audioFields = isAudio ? {
+                type: constants.CONVERSATION_TYPE_AUDIO,
+                attachments: payload.attachments,
+                durationMs: clampDurationMs(payload.durationMs)
+            } : {};
+
             const conversation = new Conversation({
                 chatId: payload.chatId,
                 sender: userId,
-                content: payload.content,
+                content,
                 messageId: payload.messageId,
-                seenBy: [userId]
+                seenBy: [userId],
+                ...audioFields
             });
 
             const message = await ConversationRepository.save(conversation);
 
             chat.lastMessage = {
-                content: payload.content,
+                content,
                 sender: userId,
                 created_at: message.created_at
             };
@@ -60,8 +79,9 @@ module.exports = (socket, namespace) => {
                     const data = new BaseResponse(true, [], {
                         conversationId: message._id,
                         chatId: payload.chatId,
-                        content: payload.content,
+                        content,
                         messageId: payload.messageId,
+                        ...audioFields,
                         sender: userId,
                         fullName: user.userInfo.fullName,
                         photos: user.photos,

@@ -28,7 +28,8 @@ module.exports = (socket, namespace) => {
 
             if (match.status !== MatchStatus.MATCHED) return;
 
-            if (conversation.type === constants.CONVERSATION_TYPE_NUDGE) {
+            // Nudges and voice notes have fixed content: not editable.
+            if (conversation.type === constants.CONVERSATION_TYPE_NUDGE || conversation.type === constants.CONVERSATION_TYPE_AUDIO) {
                 socket.emit(constants.WS_EVENT_UPDATE_MESSAGE, JSON.stringify(new BaseResponse(false, [c.CODE_NUDGE_NOT_EDITABLE])));
                 return;
             }

@@ -77,7 +77,20 @@ const chatSendMessageSchema = Joi.object({
     messageId: Joi.string().optional()
         .messages({
             'string.empty': c.CODE_MESSAGEID_REQUIRED,
-        })
+        }),
+    // Voice notes: type 'audio' + the URL returned by POST /api/chats/:chatId/audio.
+    type: Joi.string().valid('text', 'audio').optional(),
+    attachments: Joi.when('type', {
+        is: 'audio',
+        then: Joi.array().items(Joi.string().uri()).length(1).required()
+            .messages({ 'any.required': c.CODE_AUDIO_REQUIRED, 'array.length': c.CODE_AUDIO_REQUIRED }),
+        otherwise: Joi.forbidden()
+    }),
+    durationMs: Joi.when('type', {
+        is: 'audio',
+        then: Joi.number().integer().min(0).optional(),
+        otherwise: Joi.forbidden()
+    })
 });
 
 /** sendNudge payload: only the chat; content is fixed server side. */
